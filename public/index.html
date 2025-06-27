@@ -64,21 +64,20 @@
           const data = await res.json();
           if (!data || !data.headers) return;
           const challengeDetails = document.getElementById('challengeInfo');
-          challengeDetails.innerHTML = `
-Received @ ${data.timestamp || ''}
-<pre class='bg-gray-900 text-gray-300 p-2 rounded overflow-x-auto max-h-64'>${JSON.stringify(data, null, 2)}</pre>`;
+          challengeDetails.innerHTML = `\nReceived @ ${data.timestamp || ''}\n<pre class='bg-gray-900 text-gray-300 p-2 rounded overflow-x-auto max-h-64'>${JSON.stringify(data, null, 2)}</pre>`;
         } catch (err) {
           console.warn("Challenge info not available yet.");
         }
       }
 
-      // Fix: Toggle modal only once and fetch info before showing
+      // Toggle modal on gear click and fetch challenge info every time
       gearBtn.addEventListener('click', () => {
         copyStatus.classList.add('hidden');
         fetchChallengeInfo();
         modal.classList.toggle('hidden');
       });
 
+      // Copy webhook URL to clipboard
       copyBtn.addEventListener('click', () => {
         const textToCopy = webhookUrlEl.textContent;
         const textArea = document.createElement('textarea');
@@ -95,7 +94,41 @@ Received @ ${data.timestamp || ''}
         document.body.removeChild(textArea);
       });
 
-      // Chart.js setup and rest of logic unchanged...
+      // Chart.js setup and event log handling (unchanged)
+      const ctx = chartCanvas.getContext('2d');
+      const barChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'Events', backgroundColor: '#3b82f6', data: [] }, { label: 'Errors', backgroundColor: '#ef4444', data: [] }] },
+        options: { animation: false, scales: { x: { stacked: true }, y: { beginAtZero: true, stacked: true } } }
+      });
+
+      // SSE: Events
+      const eventsSource = new EventSource('/api/events');
+      eventsSource.addEventListener('open', () => statusBadge.textContent = 'Connected');
+      eventsSource.addEventListener('error', () => statusBadge.textContent = 'Disconnected');
+      eventsSource.addEventListener('message', e => {
+        const msg = JSON.parse(e.data);
+        // Update chart
+        const hour = new Date(msg.timestamp).getHours();
+        const hourStr = `${hour}:00`;
+        if (!barChart.data.labels.includes(hourStr)) {
+          barChart.data.labels.push(hourStr);
+          barChart.data.labels.sort((a, b) => parseInt(a) - parseInt(b));
+        }
+        const idx = barChart.data.labels.indexOf(hourStr);
+        barChart.data.datasets[msg.type === 'error' ? 1 : 0].data[idx] = (barChart.data.datasets[msg.type === 'error' ? 1 : 0].data[idx] || 0) + 1;
+        barChart.update();
+
+        // Log events
+        if (!displayedEventIds.has(msg.id)) {
+          displayedEventIds.add(msg.id);
+          const entry = document.createElement('div');
+          entry.className = 'flex justify-between items-center p-2 bg-gray-700 rounded animate-fade-in';
+          entry.innerHTML = `<span>${new Date(msg.timestamp).toLocaleString()}</span><span class='px-2 text-xs font-semibold rounded ${msg.type === 'error' ? 'bg-red-500' : 'bg-green-500'}'>${msg.type === 'error' ? 'Error' : 'Event'}</span>`;
+          logContainer.prepend(entry);
+          if (logContainer.children.length > 100) logContainer.removeChild(logContainer.lastChild);
+        }
+      });
     });
   </script>
   <style>
