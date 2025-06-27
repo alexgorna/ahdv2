@@ -85,9 +85,9 @@
         type: 'bar',
         data: {
           labels: Array.from({ length: 24 }, (_, i) => {
-            const date = new Date();
-            date.setHours(date.getHours() - (23 - i));
-            return `${date.getHours()}:00`;
+            const d = new Date();
+            d.setHours(d.getHours() - (23 - i));
+            return `${d.getHours()}:00`;
           }),
           datasets: [
             {
@@ -142,48 +142,48 @@
       };
 
       /**
-       * Creates a collapsible log entry element.
+       * Creates a collapsible log entry where:
+       * – the <summary> gets a red or blue background
+       * – the error message(s) are listed directly under the timestamp
        */
       const createLogElement = (e) => {
         const dt = new Date(e.timestamp);
         const isError = e.isError;
 
+        // Outer <details>
         const detailsEl = document.createElement('details');
         detailsEl.className = 'border border-gray-700 rounded-lg bg-gray-900 animate-fade-in';
 
+        // The colored header
         const summaryEl = document.createElement('summary');
-        summaryEl.className = 'flex flex-col';
+        const bgClass   = isError ? 'bg-red-700' : 'bg-blue-700';
+        summaryEl.className = `flex flex-col p-2 rounded-md ${bgClass} cursor-pointer`;
 
-        // Header: timestamp + badge
-        const headerLine = document.createElement('div');
-        headerLine.className = 'flex justify-between items-center text-sm';
-
+        // First row: timestamp + badge
+        const row = document.createElement('div');
+        row.className = 'flex justify-between items-center text-sm text-white';
         const timeSpan = document.createElement('span');
-        timeSpan.className = 'text-gray-400';
         timeSpan.textContent = dt.toLocaleString();
-        headerLine.appendChild(timeSpan);
+        const badge = document.createElement('span');
+        badge.className = `px-2 py-0.5 text-xs rounded-md ${isError ? 'bg-red-500' : 'bg-blue-500'}`;
+        badge.textContent = isError ? 'Error' : 'Event';
+        row.appendChild(timeSpan);
+        row.appendChild(badge);
+        summaryEl.appendChild(row);
 
-        const statusSpan = document.createElement('span');
-        const statusColor = isError ? 'bg-red-600' : 'bg-blue-600';
-        statusSpan.className = `px-2 py-0.5 text-xs rounded-md ${statusColor}`;
-        statusSpan.textContent = isError ? 'Error' : 'Event';
-        headerLine.appendChild(statusSpan);
-
-        summaryEl.appendChild(headerLine);
-
-        // If it's an error, list each error code/message
+        // If error, list each message underneath
         if (isError && e.event.metrics?.statusSummary?.errors) {
           e.event.metrics.statusSummary.errors.forEach(err => {
-            const errLine = document.createElement('div');
-            errLine.className = 'text-gray-200 text-xs mt-1';
-            errLine.textContent = `${err.code}: ${err.message}`;
-            summaryEl.appendChild(errLine);
+            const msg = document.createElement('div');
+            msg.className = 'text-xs text-white mt-1';
+            msg.textContent = err.message;
+            summaryEl.appendChild(msg);
           });
         }
 
         detailsEl.appendChild(summaryEl);
 
-        // Full JSON payload in the expanded panel
+        // Expanded JSON
         const pre = document.createElement('pre');
         pre.className = 'text-xs whitespace-pre-wrap p-2 text-gray-200 border-t border-gray-700';
         pre.textContent = JSON.stringify(e.event, null, 2);
@@ -195,46 +195,45 @@
       // --- Fetch & Render Loop ---
       async function fetchEvents() {
         try {
-          const res = await fetch('/api/events');
-          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+          const res  = await fetch('/api/events');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
 
-          const perHourEvents = Array(24).fill(0);
-          const perHourErrors = Array(24).fill(0);
-          const nowTime = Date.now();
-          let recentActivity = false;
-          const newLogs = [];
+          const perHourE = Array(24).fill(0);
+          const perHourX = Array(24).fill(0);
+          const now      = Date.now();
+          let recentAct = false;
+          const newLogs  = [];
 
           data.forEach(e => {
-            const eventId = e.id || e.timestamp;
-            const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
-            if (hourDiff < 24) {
-              const idx = 23 - hourDiff;
-              e.isError ? perHourErrors[idx]++ : perHourEvents[idx]++;
-              if (!displayedEventIds.has(eventId)) {
+            const id = e.id || e.timestamp;
+            const diffH = Math.floor((now - e.timestamp) / 3600000);
+            if (diffH < 24) {
+              const idx = 23 - diffH;
+              e.isError ? perHourX[idx]++ : perHourE[idx]++;
+              if (!displayedEventIds.has(id)) {
                 newLogs.push(e);
-                displayedEventIds.add(eventId);
+                displayedEventIds.add(id);
               }
             }
-            if (nowTime - e.timestamp < 2 * 60 * 1000) recentActivity = true;
+            if (now - e.timestamp < 120000) recentAct = true;
           });
 
-          newLogs.reverse().forEach(logData => {
-            logContainer.prepend(createLogElement(logData));
+          newLogs.reverse().forEach(log => {
+            logContainer.prepend(createLogElement(log));
           });
 
-          // Keep max 200 logs
           while (logContainer.children.length > 200) {
             logContainer.removeChild(logContainer.lastChild);
           }
 
-          chart.data.datasets[0].data = perHourEvents;
-          chart.data.datasets[1].data = perHourErrors;
+          chart.data.datasets[0].data = perHourE;
+          chart.data.datasets[1].data = perHourX;
           chart.update('none');
 
-          updateStatusBadge(recentActivity ? 'live' : 'disconnected');
-        } catch (error) {
-          console.error("Failed to fetch or process events:", error);
+          updateStatusBadge(recentAct ? 'live' : 'disconnected');
+        } catch (err) {
+          console.error("Fetch error:", err);
           updateStatusBadge('disconnected');
         }
       }
@@ -244,36 +243,18 @@
     });
   </script>
 
-  <!-- CSS animation + accordion arrows -->
+  <!-- Just hide the native marker – no ▶ arrows injected -->
   <style>
-    @keyframes fade-in {
-      from { opacity: 0; transform: translateY(-10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .animate-fade-in {
-      animation: fade-in 0.5s ease-out forwards;
-    }
-
-    /* Custom accordion arrows */
-    details summary {
-      list-style: none;
-      cursor: pointer;
-      padding: 0.5rem;
-    }
     details summary::-webkit-details-marker,
     details summary::marker {
       display: none;
     }
-    details summary::before {
-      content: '▶';
-      display: inline-block;
-      width: 1em;
-      margin-right: 0.5em;
-      transform: rotate(0deg);
-      transition: transform 0.2s ease;
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(-10px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
-    details[open] summary::before {
-      content: '▼';
+    .animate-fade-in {
+      animation: fade-in 0.5s ease-out forwards;
     }
   </style>
 </body>
