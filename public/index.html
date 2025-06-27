@@ -214,7 +214,7 @@
                           messages.add(item.message);
                       }
                   });
-              } else if (typeof items === 'string' && path === 'message') {
+              } else if (typeof items === 'string' && items && path === 'message') { // Ensure items is not empty string
                   messages.add(items);
               }
           });
@@ -246,7 +246,7 @@
                       
                       // activity.statusSummary.extensions.errorDetail
                       const errorDetail = getNestedProperty(activity, 'statusSummary.extensions.errorDetail');
-                      if (typeof errorDetail === 'string' && errorDetail) {
+                      if (typeof errorDetail === 'string' && errorDetail) { // Ensure errorDetail is not empty string
                           messages.add(errorDetail);
                       }
 
@@ -282,6 +282,21 @@
        */
       const createLogElement = (e) => {
           const dt = new Date(e.timestamp);
+          // Format date to DD/MM/YYYY
+          const formattedDate = new Intl.DateTimeFormat('en-GB', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric'
+          }).format(dt);
+
+          // Format time to 24-hour format (HH:MM:SS)
+          const formattedTime = new Intl.DateTimeFormat('en-GB', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: false // 24-hour format
+          }).format(dt);
+
           const isError = e.isError; // This is now set by backend and passed directly
           const logEntry = document.createElement('div');
 
@@ -303,11 +318,14 @@
               }
           }
 
+          // Get event_id from the nested 'event' object
+          const eventId = e.event.event.event_id || e.event.event.id || 'N/A'; // Use actual event_id, then id, then N/A
+
           logEntry.innerHTML = `
             <div class="log-header flex items-center space-x-2 cursor-pointer py-1">
               <span class="text-gray-500 text-lg">ⓘ</span>
               <span class="px-2 py-0.5 text-xs rounded-md ${statusColor} font-semibold">${statusText}</span>
-              <span class="text-gray-400 text-sm">${dt.toLocaleString()}</span>
+              <span class="text-gray-400 text-sm flex-grow">${formattedDate} ${formattedTime} &nbsp; <span class="font-mono text-gray-500 text-xs">${eventId}</span></span>
             </div>
             ${errorMessagesHtml}
             <button class="copy-raw-event-btn bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded-md font-semibold mt-2">Copy Raw Event</button>
@@ -360,7 +378,7 @@
 
           const newLogs = [];
           data.forEach(e => {
-            // Correctly access the actual nested event payload
+            // Correctly access the actual nested event payload for its ID
             const actualEventPayload = e.event.event; 
 
             // Use actual event ID or timestamp for `displayedEventIds` and charting
@@ -369,10 +387,6 @@
             const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
             if (hourDiff < 24) {
               const index = 23 - hourDiff;
-
-              // The 'isError' flag comes directly from the backend (e.isError)
-              // No complex frontend re-calculation for 'isError' is done here,
-              // as the backend's flag is reliable for the primary classification.
               
               if (e.isError) { // Use backend's isError flag directly for chart and visual classification
                 perHourErrors[index]++;
