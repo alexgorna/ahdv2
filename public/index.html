@@ -318,7 +318,9 @@
        * @param {object} errorEvent - The latest error event object (e.g., e from fetchEvents).
        */
       const updateTeamsMock = (errorEvent) => {
-        const actualEventPayload = errorEvent.event.event;
+        // Determine the actual event payload structure dynamically
+        const actualEventPayload = (errorEvent.event.event && (errorEvent.event.event.metrics || errorEvent.event.event.activities)) ? errorEvent.event.event : errorEvent.event;
+
         const dt = new Date(errorEvent.timestamp);
 
         // Format time to 24-hour format (HH:MM)
@@ -375,13 +377,22 @@
               hour12: false // 24-hour format
           }).format(dt);
 
-          // Determine isError based on combined signals
+          // Determine the actual event payload structure dynamically
+          const actualEventPayload = (e.event.event && (e.event.event.metrics || e.event.event.activities)) ? e.event.event : e.event;
+
+
+          // Determine isError based on combined signals (replicated from fetchEvents to ensure consistency)
           let isError = e.isError === true; // Priority 1: Backend flag
 
-          // Get the actual nested event payload for deeper checks
-          const actualEventPayload = e.event.event; 
+          // Priority 2: Check for 'FIRING' status (common for alerts, like the current false positive)
+          if (!isError) {
+              const statusFromPayload = getNestedProperty(actualEventPayload, 'status');
+              if (statusFromPayload === 'FIRING') {
+                  isError = true;
+              }
+          }
 
-          // Priority 2: Check for presence of messages if backend didn't classify as error
+          // Priority 3: Check for presence of messages if not yet classified by backend or 'FIRING' status
           if (!isError) {
               const messagesFromPayload = extractErrorMessages(actualEventPayload);
               if (messagesFromPayload.length > 0) {
@@ -389,13 +400,14 @@
               }
           }
 
-          // Priority 3: Check status if not yet classified
+          // Priority 4: Check metrics.statusSummary.status if not yet classified
           if (!isError) {
-              const status = getNestedProperty(actualEventPayload, 'metrics.statusSummary.status');
-              if (status === 'failed' || status === 'partialSuccess') {
+              const metricsStatus = getNestedProperty(actualEventPayload, 'metrics.statusSummary.status');
+              if (metricsStatus === 'failed' || metricsStatus === 'partialSuccess') {
                   isError = true;
               }
           }
+
 
           const logEntry = document.createElement('div');
 
@@ -408,8 +420,8 @@
 
           let errorMessagesHtml = '';
           if (isError) {
-              // Pass e.event.event to extractor
-              const messages = extractErrorMessages(e.event.event); 
+              // Pass the correctly determined actualEventPayload to extractor
+              const messages = extractErrorMessages(actualEventPayload); 
               if (messages.length > 0) {
                   errorMessagesHtml = messages.map(msg => `<p class="text-red-300 text-sm mt-1">${msg}</p>`).join('');
               } else {
@@ -417,10 +429,10 @@
               }
           }
 
-          // Get event_id for display: Prioritize e.event.event.event_id, then e.event.event.id, then 'N/A'
-          const eventIdForDisplay = getNestedProperty(e.event.event, 'event_id') || getNestedProperty(e.event.event, 'id') || 'N/A';
+          // Get event_id for display: Prioritize actualEventPayload.event_id, then actualEventPayload.id, then 'N/A'
+          const eventIdForDisplay = getNestedProperty(actualEventPayload, 'event_id') || getNestedProperty(actualEventPayload, 'id') || 'N/A';
           // Get sandboxName for display
-          const sandboxNameForDisplay = getNestedProperty(e.event.event, 'sandboxName') || 'N/A';
+          const sandboxNameForDisplay = getNestedProperty(actualEventPayload, 'sandboxName') || 'N/A';
 
 
           logEntry.innerHTML = `
@@ -493,11 +505,11 @@
           let latestErrorEvent = null;
 
           data.forEach(e => {
-            // Correctly access the actual nested event payload for its ID and content
-            const actualEventPayload = e.event.event; 
+            // Determine the actual event payload structure dynamically for current event
+            const actualEventPayload = (e.event.event && (e.event.event.metrics || e.event.event.activities)) ? e.event.event : e.event;
 
             // Corrected eventId logic for displayedEventIds Set to ensure uniqueness and prevent skipping
-            // Use e.timestamp as the base, and append a unique ID from the payload for collision avoidance.
+            // Use e.timestamp as the base, and append a unique ID from the actual payload for collision avoidance.
             const uniquePayloadIdPart = getNestedProperty(actualEventPayload, 'event_id') || getNestedProperty(actualEventPayload, 'id') || String(Math.random()).substring(2, 8); // Add random part if no ID exists.
             const eventIdForTracking = `${e.timestamp}-${uniquePayloadIdPart}`; // This ensures true uniqueness for the Set
             
@@ -505,9 +517,30 @@
             if (hourDiff < 24) {
               const index = 23 - hourDiff;
               
-              // The 'isError' flag comes directly from the backend (e.isError)
-              // This is used directly for chart and visual classification.
-              if (e.isError) { 
+              // The 'isError' classification logic for charts and latestErrorEvent tracking
+              // MUST match the logic used in createLogElement for consistency.
+              let isErrorForChartsAndTracking = e.isError === true; 
+              if (!isErrorForChartsAndTracking) {
+                  const statusFromPayload = getNestedProperty(actualEventPayload, 'status');
+                  if (statusFromPayload === 'FIRING') {
+                      isErrorForChartsAndTracking = true;
+                  }
+              }
+              if (!isErrorForChartsAndTracking) {
+                  const messagesFromPayload = extractErrorMessages(actualEventPayload);
+                  if (messagesFromPayload.length > 0) {
+                      isErrorForChartsAndTracking = true;
+                  }
+              }
+              if (!isErrorForChartsAndTracking) {
+                  const metricsStatus = getNestedProperty(actualEventPayload, 'metrics.statusSummary.status');
+                  if (metricsStatus === 'failed' || metricsStatus === 'partialSuccess') {
+                      isErrorForChartsAndTracking = true;
+                  }
+              }
+
+
+              if (isErrorForChartsAndTracking) { 
                 perHourErrors[index]++;
                 // If this is an error and newer than the current latest, update it
                 if (!latestErrorEvent || e.timestamp > latestErrorEvent.timestamp) {
@@ -535,9 +568,8 @@
           
           while (logContainer.children.length > MAX_LOGS) { 
               // To accurately remove from displayedEventIds set, we need the eventIdForTracking of the removed element.
-              // A more robust solution involves storing eventIdForTracking as a data attribute on the logElement.
-              // For now, since we only *remove* the oldest, the Set might eventually contain IDs of removed elements,
-              // but it won't impact *adding* new unique events. The MAX_LOGS visual limit will still be enforced.
+              // This part of the code is not fully robust for `displayedEventIds` cleanup without specific data attributes.
+              // However, the visual limit (MAX_LOGS) is enforced, and new events will still be added.
               logContainer.removeChild(logContainer.lastChild);
           }
           
