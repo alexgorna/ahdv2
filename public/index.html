@@ -76,8 +76,8 @@
       const logContainer = document.getElementById('logContainer');
       const chartCanvas = document.getElementById('barChart');
       const logCountEl = document.getElementById('logCount');
-      const eventLogsHeader = document.getElementById('eventLogsHeader'); // New element
-      const logsToggleArrow = document.getElementById('logsToggleArrow'); // New element
+      const eventLogsHeader = document.getElementById('eventLogsHeader'); 
+      const logsToggleArrow = document.getElementById('logsToggleArrow'); 
       
       const displayedEventIds = new Set();
       const MAX_LOGS = 200; // Limit the number of log entries
@@ -312,7 +312,7 @@
 
           let errorMessagesHtml = '';
           if (isError) {
-              // Pass e.event.event to extractor for message extraction
+              // Pass e.event.event to extractor
               const messages = extractErrorMessages(e.event.event); 
               if (messages.length > 0) {
                   errorMessagesHtml = messages.map(msg => `<p class="text-red-300 text-sm mt-1">${msg}</p>`).join('');
@@ -322,7 +322,8 @@
           }
 
           // Get event_id from the nested 'event' object
-          const eventId = e.event.event.event_id || e.event.event.id || 'N/A'; // Use actual event_id, then id, then N/A
+          const actualEventPayload = e.event.event; // Get the correct nested payload
+          const eventId = actualEventPayload.event_id || actualEventPayload.id || 'N/A'; // Use event_id from actual, then id, then N/A
 
           logEntry.innerHTML = `
             <div class="log-header flex items-center space-x-2 cursor-pointer py-1">
@@ -384,8 +385,9 @@
             // Correctly access the actual nested event payload for its ID
             const actualEventPayload = e.event.event; 
 
-            // Use actual event ID or timestamp for `displayedEventIds` and charting
-            const eventId = actualEventPayload.id || e.timestamp; 
+            // Corrected eventId logic: Prioritize e.id, then actualEventPayload.event_id,
+            // then actualEventPayload.id, then e.timestamp.
+            const eventId = e.id || actualEventPayload.event_id || actualEventPayload.id || e.timestamp; 
             
             const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
             if (hourDiff < 24) {
