@@ -198,71 +198,101 @@
       const extractErrorMessages = (eventData) => {
           const messages = new Set();
           
+          console.groupCollapsed(`extractErrorMessages for event: ${eventData.id || eventData.timestamp}`);
+          console.log("Input eventData to extractor:", eventData);
+
           // Paths to check at the top level of 'eventData'
           const topLevelPaths = [
               'metrics.statusSummary.errors',
               'metrics.recordSummary.failedInfo',
               'metrics.recordSummary.skippedInfo', 
-              // Adding a very general path just in case, though less specific
               'message' // Top-level 'message' field
           ];
 
           topLevelPaths.forEach(path => {
               const items = getNestedProperty(eventData, path);
+              console.log(`Checking path: ${path}, Result:`, items); // Log what's found at each path
               if (Array.isArray(items)) {
                   items.forEach(item => {
-                      if (item && item.message) messages.add(item.message);
+                      if (item && item.message) {
+                          console.log(`  Found array message: ${item.message}`);
+                          messages.add(item.message);
+                      }
                   });
-              } else if (typeof items === 'string' && path === 'message') { // For direct 'message' string
+              } else if (typeof items === 'string' && path === 'message') {
+                  console.log(`  Found top-level string message: ${items}`);
                   messages.add(items);
               }
           });
 
           // Check paths within activities array
           const activities = getNestedProperty(eventData, 'activities');
+          console.log("Checking activities array:", activities);
           if (Array.isArray(activities)) {
-              activities.forEach(activity => {
+              activities.forEach((activity, index) => {
+                  console.groupCollapsed(`  Activity ${index}:`);
                   if (activity) {
                       // activity.statusSummary.errors[].message
                       const activityStatusErrors = getNestedProperty(activity, 'statusSummary.errors');
+                      console.log(`    Activity ${index} - statusSummary.errors:`, activityStatusErrors);
                       if (Array.isArray(activityStatusErrors)) {
                           activityStatusErrors.forEach(err => {
-                              if (err && err.message) messages.add(err.message);
+                              if (err && err.message) {
+                                  console.log(`      Found activity status error message: ${err.message}`);
+                                  messages.add(err.message);
+                              }
                           });
                       }
                       
                       // activity.statusSummary.extensions.errors[].message
                       const activityExtensionErrors = getNestedProperty(activity, 'statusSummary.extensions.errors');
+                      console.log(`    Activity ${index} - statusSummary.extensions.errors:`, activityExtensionErrors);
                       if (Array.isArray(activityExtensionErrors)) {
                           activityExtensionErrors.forEach(err => {
-                              if (err && err.message) messages.add(err.message);
+                              if (err && err.message) {
+                                  console.log(`      Found activity extension error message: ${err.message}`);
+                                  messages.add(err.message);
+                              }
                           });
                       }
                       
                       // activity.statusSummary.extensions.errorDetail
                       const errorDetail = getNestedProperty(activity, 'statusSummary.extensions.errorDetail');
+                      console.log(`    Activity ${index} - statusSummary.extensions.errorDetail:`, errorDetail);
                       if (typeof errorDetail === 'string' && errorDetail) {
+                          console.log(`      Found activity extension errorDetail: ${errorDetail}`);
                           messages.add(errorDetail);
                       }
 
                       // activity.recordSummary.failedInfo[].message
                       const activityFailedInfo = getNestedProperty(activity, 'recordSummary.failedInfo');
+                      console.log(`    Activity ${index} - recordSummary.failedInfo:`, activityFailedInfo);
                       if (Array.isArray(activityFailedInfo)) {
                           activityFailedInfo.forEach(info => {
-                              if (info && info.message) messages.add(info.message);
+                              if (info && info.message) {
+                                  console.log(`      Found activity failed info message: ${info.message}`);
+                                  messages.add(info.message);
+                              }
                           });
                       }
 
                       // activity.recordSummary.skippedInfo[].message
                       const activitySkippedInfo = getNestedProperty(activity, 'recordSummary.skippedInfo');
+                      console.log(`    Activity ${index} - recordSummary.skippedInfo:`, activitySkippedInfo);
                       if (Array.isArray(activitySkippedInfo)) {
                           activitySkippedInfo.forEach(info => {
-                              if (info && info.message) messages.add(info.message);
+                              if (info && info.message) {
+                                  console.log(`      Found activity skipped info message: ${info.message}`);
+                                  messages.add(info.message);
+                              }
                           });
                       }
                   }
+                  console.groupEnd();
               });
           }
+          console.log("Final extracted messages from extractor:", Array.from(messages));
+          console.groupEnd();
           return Array.from(messages);
       };
       
@@ -285,7 +315,7 @@
 
           let errorMessagesHtml = '';
           if (isError) {
-              const messages = extractErrorMessages(e.event); 
+              const messages = extractErrorMessages(e.event); // Re-run extractor for display, just in case
               if (messages.length > 0) {
                   errorMessagesHtml = messages.map(msg => `<p class="text-red-300 text-sm mt-1">${msg}</p>`).join('');
               } else {
@@ -358,24 +388,17 @@
             if (hourDiff < 24) {
               const index = 23 - hourDiff;
 
-              const messages = extractErrorMessages(e.event); // Extract messages
+              // The extractErrorMessages function now contains detailed console logs
+              const messages = extractErrorMessages(e.event); 
               const hasErrorMessages = messages.length > 0;
               const isFailedStatus = e.event.metrics && e.event.metrics.statusSummary && 
                                      (e.event.metrics.statusSummary.status === 'failed' || 
                                       e.event.metrics.statusSummary.status === 'partialSuccess');
               
-              // Set e.isError based on extracted messages or failed status
               e.isError = hasErrorMessages || isFailedStatus; 
               
-              // --- DEBUGGING LOGS START ---
-              // console.group(`Processing Event: ${e.event.id || e.timestamp}`);
-              // console.log("Raw Event Payload:", e.event); // Removed this to reduce console spam for user
-              // console.log("Extracted Messages (from extractErrorMessages):", messages);
-              // console.log("hasErrorMessages:", hasErrorMessages);
-              // console.log("isFailedStatus (based on metrics.statusSummary.status):", isFailedStatus);
-              // console.log("Final e.isError classification:", e.isError);
-              // console.groupEnd();
-              // --- DEBUGGING LOGS END ---
+              // console.group removed for less console spam as requested previously
+              // Detailed logs are now inside extractErrorMessages itself.
 
               if (e.isError) {
                 perHourErrors[index]++;
