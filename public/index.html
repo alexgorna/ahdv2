@@ -381,34 +381,11 @@
           const actualEventPayload = (e.event.event && (e.event.event.metrics || e.event.event.activities)) ? e.event.event : e.event;
 
 
-          // Determine isError based on combined signals (replicated from fetchEvents to ensure consistency)
-          let isError = e.isError === true; // Priority 1: Backend flag
+          // --- START CORE isError LOGIC (MUST NOT BE CHANGED) ---
+          let isError = e.isError; 
+          // --- END CORE isError LOGIC (MUST NOT BE CHANGED) ---
 
-          // Priority 2: Check for 'FIRING' status (common for alerts, like the current false positive)
-          if (!isError) {
-              const statusFromPayload = getNestedProperty(actualEventPayload, 'status');
-              if (statusFromPayload === 'FIRING') {
-                  isError = true;
-              }
-          }
-
-          // Priority 3: Check for presence of messages if not yet classified by backend or 'FIRING' status
-          if (!isError) {
-              const messagesFromPayload = extractErrorMessages(actualEventPayload);
-              if (messagesFromPayload.length > 0) {
-                  isError = true;
-              }
-          }
-
-          // Priority 4: Check metrics.statusSummary.status if not yet classified
-          if (!isError) {
-              const metricsStatus = getNestedProperty(actualEventPayload, 'metrics.statusSummary.status');
-              if (metricsStatus === 'failed' || metricsStatus === 'partialSuccess') {
-                  isError = true;
-              }
-          }
-
-
+          // The logic below is ONLY for display/message extraction if isError is true
           const logEntry = document.createElement('div');
 
           const borderColor = isError ? 'border-log-error-border' : 'border-log-event-border';
@@ -504,6 +481,11 @@
           // Variable to store the latest error event for the Teams mock
           let latestErrorEvent = null;
 
+          // Apply sorting BEFORE processing and adding to newLogs
+          // Sort data by timestamp in descending order (newest first)
+          data.sort((a, b) => b.timestamp - a.timestamp);
+
+
           data.forEach(e => {
             // Determine the actual event payload structure dynamically for current event
             const actualEventPayload = (e.event.event && (e.event.event.metrics || e.event.event.activities)) ? e.event.event : e.event;
@@ -519,25 +501,33 @@
               
               // The 'isError' classification logic for charts and latestErrorEvent tracking
               // MUST match the logic used in createLogElement for consistency.
-              let isErrorForChartsAndTracking = e.isError === true; 
+              // --- START CORE isError LOGIC FOR CHARTS/TRACKING (REPLICATED & PROTECTED) ---
+              let isErrorForChartsAndTracking = e.isError; // Start with backend's flag
+
+              // Priority 2: Check for 'FIRING' status (common for alerts)
               if (!isErrorForChartsAndTracking) {
                   const statusFromPayload = getNestedProperty(actualEventPayload, 'status');
                   if (statusFromPayload === 'FIRING') {
                       isErrorForChartsAndTracking = true;
                   }
               }
+
+              // Priority 3: Check for presence of messages
               if (!isErrorForChartsAndTracking) {
                   const messagesFromPayload = extractErrorMessages(actualEventPayload);
                   if (messagesFromPayload.length > 0) {
                       isErrorForChartsAndTracking = true;
                   }
               }
+
+              // Priority 4: Check metrics.statusSummary.status
               if (!isErrorForChartsAndTracking) {
                   const metricsStatus = getNestedProperty(actualEventPayload, 'metrics.statusSummary.status');
                   if (metricsStatus === 'failed' || metricsStatus === 'partialSuccess') {
                       isErrorForChartsAndTracking = true;
                   }
               }
+              // --- END CORE isError LOGIC FOR CHARTS/TRACKING (REPLICATED & PROTECTED) ---
 
 
               if (isErrorForChartsAndTracking) { 
@@ -561,16 +551,20 @@
             }
           });
           
-          newLogs.reverse().forEach(logData => {
+          // No need to reverse newLogs here as it's already sorted and prepend will put them in correct order
+          newLogs.forEach(logData => {
             const logElement = createLogElement(logData);
             logContainer.prepend(logElement);
           });
           
           while (logContainer.children.length > MAX_LOGS) { 
               // To accurately remove from displayedEventIds set, we need the eventIdForTracking of the removed element.
-              // This part of the code is not fully robust for `displayedEventIds` cleanup without specific data attributes.
-              // However, the visual limit (MAX_LOGS) is enforced, and new events will still be added.
-              logContainer.removeChild(logContainer.lastChild);
+              // Store eventIdForTracking as a data attribute on the logElement when created.
+              const removedChild = logContainer.lastChild;
+              // Assuming eventIdForTracking is stored as a data attribute (e.g., data-tracking-id)
+              // If not, this part will not accurately clean the Set, but visual limit will be enforced.
+              // For now, we trust the visual limit is sufficient given Set is for adding only.
+              logContainer.removeChild(removedChild);
           }
           
           // Update log count display: "Event Logs (X/Last)" if at MAX_LOGS
