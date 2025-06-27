@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <!-- Added viewport meta tag for proper responsive scaling on all devices -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AEP Health Monitoring – Last 24 Hours</title>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -9,98 +10,190 @@
 </head>
 <body class="bg-gray-900 text-white font-sans">
   <div class="max-w-6xl mx-auto p-4">
+    <!-- Header Section -->
     <div class="flex justify-between items-center mb-4">
       <h1 class="text-3xl font-bold">AEP Health Monitoring <span class="text-sm font-normal text-gray-400">– Last 24 Hours</span></h1>
       <div class="flex items-center space-x-2">
-        <span id="statusBadge" class="bg-red-600 text-xs px-2 py-1 rounded">Disconnected</span>
-        <button id="gearBtn" class="text-white text-xl focus:outline-none">⚙️</button>
+        <span id="statusBadge" class="bg-red-600 text-xs px-2 py-1 rounded-md transition-colors duration-300">Disconnected</span>
+        <button id="gearBtn" class="text-white text-xl focus:outline-none hover:text-gray-300">⚙️</button>
       </div>
     </div>
 
-    <div id="modal" class="hidden bg-gray-800 border border-gray-700 p-4 rounded mb-4">
-      <p class="mb-2">Webhook URL:</p>
+    <!-- Webhook URL Modal (Initially Hidden) -->
+    <div id="modal" class="hidden bg-gray-800 border border-gray-700 p-4 rounded-lg mb-4">
+      <p class="mb-2 font-semibold">Webhook URL:</p>
       <div class="flex items-center space-x-2">
-        <code id="webhookUrl" class="text-blue-400 break-all"></code>
-        <button id="copyBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded">Copy</button>
+        <code id="webhookUrl" class="text-blue-400 break-all bg-gray-900 p-2 rounded-md"></code>
+        <button id="copyBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-md font-semibold">Copy</button>
         <span id="copyStatus" class="text-green-400 text-xs hidden">Copied!</span>
       </div>
     </div>
 
-    <div class="bg-gray-800 p-4 rounded shadow mb-6">
+    <!-- Chart Section -->
+    <div class="bg-gray-800 p-4 rounded-lg shadow mb-6">
       <canvas id="barChart" height="100"></canvas>
     </div>
 
-    <div class="bg-gray-800 p-4 rounded shadow">
+    <!-- Event Logs Section -->
+    <div class="bg-gray-800 p-4 rounded-lg shadow">
       <h2 class="text-lg font-semibold mb-2">Event Logs</h2>
-      <div id="log" class="max-h-96 overflow-y-auto space-y-2"></div>
+      <div id="logContainer" class="max-h-96 overflow-y-auto space-y-2"></div>
     </div>
   </div>
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
+      // --- Element Caching ---
+      // Cache DOM elements on startup to avoid repeated lookups.
       const modal = document.getElementById('modal');
       const gearBtn = document.getElementById('gearBtn');
-      const webhookUrl = document.getElementById('webhookUrl');
+      const webhookUrlEl = document.getElementById('webhookUrl');
       const copyBtn = document.getElementById('copyBtn');
       const copyStatus = document.getElementById('copyStatus');
       const statusBadge = document.getElementById('statusBadge');
-      webhookUrl.textContent = window.location.origin + "/webhook";
+      const logContainer = document.getElementById('logContainer');
+      const chartCanvas = document.getElementById('barChart');
+      
+      // Keep track of displayed event IDs to prevent duplicates
+      const displayedEventIds = new Set();
 
+      // --- Initial Setup ---
+      webhookUrlEl.textContent = window.location.origin + "/webhook";
+
+      // --- Event Listeners ---
       gearBtn.addEventListener('click', () => {
         modal.classList.toggle('hidden');
-        copyStatus.classList.add('hidden');
+        copyStatus.classList.add('hidden'); // Hide status on toggle
       });
 
       copyBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(webhookUrl.textContent).then(() => {
+        // Use a more robust copy method that works well in iframes.
+        const textToCopy = webhookUrlEl.textContent;
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
           copyStatus.classList.remove('hidden');
           setTimeout(() => copyStatus.classList.add('hidden'), 2000);
-        });
+        } catch (err) {
+          console.error('Failed to copy text: ', err);
+          // Optionally, display an error message to the user here.
+        }
+        document.body.removeChild(textArea);
       });
 
-      const ctx = document.getElementById('barChart').getContext('2d');
+      // --- Chart.js Initialization ---
+      const ctx = chartCanvas.getContext('2d');
       const chart = new Chart(ctx, {
         type: 'bar',
         data: {
+          // Dynamically generate labels for the last 24 hours
           labels: Array.from({ length: 24 }, (_, i) => {
-        const date = new Date();
-        date.setHours(date.getHours() - (23 - i));
-        return `${date.getHours()}:00`;
-      }),
+            const date = new Date();
+            date.setHours(date.getHours() - (23 - i));
+            return `${date.getHours()}:00`;
+          }),
           datasets: [
             {
               label: 'Events',
               data: Array(24).fill(0),
-              backgroundColor: 'rgb(59, 130, 246)'
+              backgroundColor: 'rgba(59, 130, 246, 0.7)',
+              borderColor: 'rgb(59, 130, 246)',
+              borderWidth: 1,
             },
             {
               label: 'Errors',
               data: Array(24).fill(0),
-              backgroundColor: 'rgb(239, 68, 68)'
+              backgroundColor: 'rgba(239, 68, 68, 0.7)',
+              borderColor: 'rgb(239, 68, 68)',
+              borderWidth: 1,
             }
           ]
         },
         options: {
           responsive: true,
+          maintainAspectRatio: false,
           scales: {
-            y: { beginAtZero: true }
+            y: { 
+              beginAtZero: true,
+              ticks: { color: '#9CA3AF' },
+              grid: { color: 'rgba(255, 255, 255, 0.1)' }
+            },
+            x: {
+              ticks: { color: '#9CA3AF' },
+              grid: { display: false }
+            }
+          },
+          plugins: {
+            legend: {
+              labels: { color: '#E5E7EB' }
+            }
           }
         }
       });
 
+      // --- Data Fetching and UI Update Logic ---
+      
+      /**
+       * Updates the status badge with the given text and style.
+       * @param {('live'|'disconnected')} state - The current connection state.
+       */
+      const updateStatusBadge = (state) => {
+        if (state === 'live') {
+          statusBadge.textContent = 'Live';
+          statusBadge.className = 'bg-green-600 text-xs px-2 py-1 rounded-md transition-colors duration-300';
+        } else {
+          statusBadge.textContent = 'Disconnected';
+          statusBadge.className = 'bg-red-600 text-xs px-2 py-1 rounded-md transition-colors duration-300';
+        }
+      };
+      
+      /**
+       * Creates a DOM element for a log entry.
+       * @param {object} e - The event object from the API.
+       * @returns {HTMLDivElement} - The created DOM element.
+       */
+      const createLogElement = (e) => {
+          const dt = new Date(e.timestamp);
+          const isError = e.isError;
+
+          const logEntry = document.createElement('div');
+          logEntry.className = 'p-2 border border-gray-700 rounded-lg bg-gray-900 animate-fade-in';
+          
+          const statusColor = isError ? 'bg-red-600' : 'bg-green-600';
+          const statusText = isError ? 'Error' : 'Event';
+          
+          logEntry.innerHTML = `
+            <div class="flex justify-between items-center text-sm">
+              <span class="text-gray-400">${dt.toLocaleString()}</span>
+              <span class="px-2 py-0.5 text-xs rounded-md ${statusColor}">${statusText}</span>
+            </div>
+            <pre class="text-xs whitespace-pre-wrap mt-1 text-gray-200">${JSON.stringify(e.event, null, 2)}</pre>
+          `;
+          return logEntry;
+      };
+
       async function fetchEvents() {
         try {
           const res = await fetch('/api/events');
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+          }
           const data = await res.json();
 
           const perHourEvents = Array(24).fill(0);
           const perHourErrors = Array(24).fill(0);
-          const logs = [];
           const nowTime = Date.now();
           let recentActivity = false;
 
+          // Process data for chart and find new logs
+          const newLogs = [];
           data.forEach(e => {
-            const dt = new Date(e.timestamp);
+            // Assume events have a unique 'id' field. If not, another unique property can be used.
+            const eventId = e.id || e.timestamp; // Use timestamp as a fallback unique ID
+            
             const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
             if (hourDiff < 24) {
               const index = 23 - hourDiff;
@@ -110,38 +203,59 @@
                 perHourEvents[index]++;
               }
 
-              logs.push(\`
-                <div class="p-2 border border-gray-700 rounded bg-gray-900">
-                  <div class="flex justify-between items-center text-sm">
-                    <span class="text-gray-400">\${dt.toLocaleString()}</span>
-                    <span class="px-2 py-0.5 text-xs rounded \${e.isError ? 'bg-red-600' : 'bg-green-600'}">\${e.isError ? 'Error' : 'Event'}</span>
-                  </div>
-                  <pre class="text-xs whitespace-pre-wrap mt-1 text-gray-200">\${JSON.stringify(e.event, null, 2)}</pre>
-                </div>
-              \`);
-
-              if (nowTime - e.timestamp < 2 * 60 * 1000) recentActivity = true;
+              // OPTIMIZATION: Only create and add elements for new, unseen logs.
+              if (!displayedEventIds.has(eventId)) {
+                  newLogs.push(e);
+                  displayedEventIds.add(eventId);
+              }
+            }
+            if (nowTime - e.timestamp < 2 * 60 * 1000) {
+              recentActivity = true;
             }
           });
+          
+          // --- Update UI ---
+
+          // OPTIMIZATION: Prepend only new log entries instead of rebuilding the whole list.
+          // Reverse so the newest appears at the very top.
+          newLogs.reverse().forEach(logData => {
+            const logElement = createLogElement(logData);
+            logContainer.prepend(logElement);
+          });
+          
+          // Limit the number of log entries to prevent high memory usage
+          while (logContainer.children.length > 200) { // Keep max 200 logs
+              logContainer.removeChild(logContainer.lastChild);
+          }
 
           chart.data.datasets[0].data = perHourEvents;
           chart.data.datasets[1].data = perHourErrors;
-          chart.update();
+          chart.update('none'); // 'none' for no animation, making updates smoother
 
-          // DOM updated incrementally below (no full rebuild)
-          statusBadge.textContent = recentActivity ? 'Live' : 'Disconnected';
-          statusBadge.className = recentActivity
-            ? 'bg-green-600 text-xs px-2 py-1 rounded'
-            : 'bg-red-600 text-xs px-2 py-1 rounded';
-        } catch {
-          statusBadge.textContent = 'Disconnected';
-          statusBadge.className = 'bg-red-600 text-xs px-2 py-1 rounded';
+          updateStatusBadge(recentActivity ? 'live' : 'disconnected');
+
+        } catch (error) {
+          // IMPROVEMENT: Log the actual error to the console for easier debugging.
+          console.error("Failed to fetch or process events:", error);
+          updateStatusBadge('disconnected');
         }
       }
 
-      setInterval(fetchEvents, 5000);
+      // Initial call and interval setup
       fetchEvents();
+      setInterval(fetchEvents, 5000);
     });
   </script>
+  
+  <!-- Simple CSS animation for new log entries -->
+  <style>
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+      animation: fade-in 0.5s ease-out forwards;
+    }
+  </style>
 </body>
 </html>
