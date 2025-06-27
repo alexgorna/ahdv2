@@ -82,7 +82,6 @@
         document.body.removeChild(ta);
       });
 
-      // Chart.js
       const ctx = chartCanvas.getContext('2d');
       const chart = new Chart(ctx, {
         type: 'bar',
@@ -143,16 +142,13 @@
         const dt      = new Date(e.timestamp);
         const isError = e.isError;
 
-        // details wrapper
         const detailsEl = document.createElement('details');
         detailsEl.className = 'border border-gray-700 rounded-lg bg-gray-900 animate-fade-in';
 
-        // summary = full-width colored header
         const summaryEl = document.createElement('summary');
         const bgClass   = isError ? 'bg-red-700' : 'bg-blue-700';
         summaryEl.className = `w-full flex flex-col p-2 ${bgClass} rounded-t-lg cursor-pointer`;
 
-        // row: timestamp + badge
         const row = document.createElement('div');
         row.className = 'flex justify-between items-center text-sm text-white';
         const timeSpan = document.createElement('span');
@@ -164,16 +160,25 @@
         row.appendChild(badge);
         summaryEl.appendChild(row);
 
-        // error messages: check metrics.statusSummary.errors first
-        let messages = [];
-        if (e.event.metrics?.statusSummary?.errors?.length) {
-          messages = e.event.metrics.statusSummary.errors.map(x => x.message);
+        // 🛠 Robust error message extraction
+        const messages = [];
+        const push = (list) => Array.isArray(list) && list.forEach(x => x?.message && messages.push(x.message));
+
+        if (e.event?.message) messages.push(e.event.message);
+        push(e.event.metrics?.statusSummary?.errors);
+        push(e.event.metrics?.recordSummary?.failedInfo);
+
+        if (Array.isArray(e.event.activities)) {
+          e.event.activities.forEach(a => {
+            push(a.statusSummary?.errors);
+            push(a.statusSummary?.extensions?.errors);
+            push(a.recordSummary?.failedInfo);
+            if (a.statusSummary?.extensions?.errorDetail) {
+              messages.push(a.statusSummary.extensions.errorDetail);
+            }
+          });
         }
-        // fallback to recordSummary.failedInfo
-        else if (e.event.metrics?.recordSummary?.failedInfo?.length) {
-          messages = e.event.metrics.recordSummary.failedInfo.map(x => x.message);
-        }
-        // render each
+
         messages.forEach(msg => {
           const div = document.createElement('div');
           div.className = 'text-xs text-white mt-1';
@@ -183,7 +188,6 @@
 
         detailsEl.appendChild(summaryEl);
 
-        // expanded JSON
         const pre = document.createElement('pre');
         pre.className = 'text-xs whitespace-pre-wrap p-2 text-gray-200 border-t border-gray-700';
         pre.textContent = JSON.stringify(e.event, null, 2);
@@ -239,11 +243,9 @@
     });
   </script>
 
-  <!-- hide native marker only -->
   <style>
     details summary::-webkit-details-marker,
     details summary::marker { display: none; }
-
     @keyframes fade-in {
       from { opacity: 0; transform: translateY(-10px); }
       to   { opacity: 1; transform: translateY(0); }
