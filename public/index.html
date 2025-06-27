@@ -86,23 +86,81 @@
         modal.classList.toggle('hidden');
         copyStatus.classList.add('hidden');
       });
-      copyBtn.addEventListener('click', () => {
-        const ta = document.createElement('textarea');
-        ta.value = webhookUrlEl.textContent;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        copyStatus.classList.remove('hidden');
-        setTimeout(() => copyStatus.classList.add('hidden'), 2000);
-        document.body.removeChild(ta);
+
+      // Updated copy functionality to use navigator.clipboard.writeText()
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(webhookUrlEl.textContent);
+          copyStatus.classList.remove('hidden');
+          setTimeout(() => copyStatus.classList.add('hidden'), 2000);
+        } catch (err) {
+          // Fallback for environments where clipboard API might not be available or permitted
+          const ta = document.createElement('textarea');
+          ta.value = webhookUrlEl.textContent;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy'); // Deprecated, but good for fallback
+          copyStatus.classList.remove('hidden');
+          setTimeout(() => copyStatus.classList.add('hidden'), 2000);
+          document.body.removeChild(ta);
+        }
       });
 
-      // setup chart…
+      // setup chart with initial data and options
       const ctx = chartCanvas.getContext('2d');
       const chart = new Chart(ctx, {
         type: 'bar',
-        data: { /* … unchanged … */ },
-        options: { /* … unchanged … */ }
+        data: {
+          labels: Array.from({length: 24}, (_, i) => `${24 - i}h ago`), // Labels for last 24 hours
+          datasets: [
+            {
+              label: 'Events',
+              data: Array(24).fill(0), // Initial data for events
+              backgroundColor: 'rgba(59, 130, 246, 0.6)', // Tailwind blue-500 equivalent
+              borderColor: 'rgba(59, 130, 246, 1)',
+              borderWidth: 1
+            },
+            {
+              label: 'Errors',
+              data: Array(24).fill(0), // Initial data for errors
+              backgroundColor: 'rgba(239, 68, 68, 0.6)', // Tailwind red-500 equivalent
+              borderColor: 'rgba(239, 68, 68, 1)',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              stacked: true,
+              grid: {
+                color: 'rgba(255, 255, 255, 0.1)'
+              },
+              ticks: {
+                color: 'white'
+              }
+            },
+            y: {
+              stacked: true,
+              beginAtZero: true,
+              grid: {
+                color: 'rgba(255, 255, 255, 0.1)'
+              },
+              ticks: {
+                color: 'white'
+              }
+            }
+          },
+          plugins: {
+            legend: {
+              labels: {
+                color: 'white'
+              }
+            }
+          }
+        }
       });
 
       const updateStatusBadge = (state) => {
@@ -133,16 +191,19 @@
       }
 
       function createLogElement(raw) {
-        console.log("📦 createLogElement() got raw:", raw);
         const evt     = raw.event;
         const dt      = new Date(raw.timestamp);
         const isError = raw.isError;
         const color   = isError ? 'red' : 'blue';
 
         const detailsEl = document.createElement('details');
+        // No longer setting 'open' attribute for errors, keeping accordion collapsed by default.
         detailsEl.className = 'border border-gray-700 rounded-lg bg-gray-900 animate-fade-in overflow-hidden';
 
         const summaryEl = document.createElement('summary');
+        // Note: Dynamically constructed Tailwind classes for color might not be picked up by JIT compiler
+        // For production, consider using full class names (e.g., 'bg-red-800' or 'bg-blue-800')
+        // or configure Tailwind's safelist if many dynamic colors are expected.
         summaryEl.className = `flex items-start justify-between p-4 bg-${color}-800 hover:bg-${color}-700 cursor-pointer`;
         summaryEl.style.listStyle = 'none';
 
@@ -171,7 +232,6 @@
         meta.appendChild(time);
 
         const messages = collectAllMessages(evt);
-        console.log("⚙️ Messages for", evt.id, messages);
 
         const primary = document.createElement('div');
         primary.className = 'font-medium text-white';
@@ -214,12 +274,10 @@
       }
 
       async function fetchEvents() {
-        console.log("🛰️ fetchEvents() calling /api/events…");
         try {
           const res  = await fetch('/api/events');
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
-          console.log("🛰️ fetchEvents() returned", data);
 
           const perE = Array(24).fill(0), perX = Array(24).fill(0);
           const now  = Date.now(), newLogs = [], liveStates = [];
@@ -227,33 +285,35 @@
           data.forEach(e => {
             const id   = e.id || e.timestamp;
             const diff = Math.floor((now - e.timestamp)/3600000);
-            if (diff < 24) {
+            if (diff >= 0 && diff < 24) { // Ensure diff is within valid range [0, 23]
               (e.isError ? perX : perE)[23 - diff]++;
               if (!displayedEventIds.has(id)) {
                 newLogs.push(e);
                 displayedEventIds.add(id);
               }
             }
+            // Check if the event happened within the last 2 minutes (120 seconds)
             liveStates.push(now - e.timestamp < 120000);
           });
 
-          console.log("🛰️ newLogs:", newLogs);
           newLogs.reverse().forEach(raw => logContainer.prepend(createLogElement(raw)));
+          // Limit log entries to 200 to prevent excessive DOM elements
           while (logContainer.children.length > 200) {
             logContainer.removeChild(logContainer.lastChild);
           }
 
           chart.data.datasets[0].data = perE;
           chart.data.datasets[1].data = perX;
-          chart.update('none');
+          chart.update('none'); // 'none' for no animation
 
           updateStatusBadge(liveStates.some(Boolean) ? 'live' : 'disconnected');
         } catch (err) {
-          console.error('Fetch error:', err);
+          console.error('Fetch error:', err); // Keeping error logs is generally good practice
           updateStatusBadge('disconnected');
         }
       }
 
+      // Initial fetch and then periodic fetching
       fetchEvents();
       setInterval(fetchEvents, 5000);
     });
