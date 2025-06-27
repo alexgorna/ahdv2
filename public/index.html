@@ -269,7 +269,7 @@
        */
       const createLogElement = (e) => {
           const dt = new Date(e.timestamp);
-          const isError = e.isError; // This is now set in fetchEvents
+          const isError = e.isError; 
           const logEntry = document.createElement('div');
 
           const borderColor = isError ? 'border-log-error-border' : 'border-log-event-border';
@@ -281,10 +281,11 @@
 
           let errorMessagesHtml = '';
           if (isError) {
-              const messages = extractErrorMessages(e.event); // Use e.event directly
+              const messages = extractErrorMessages(e.event); 
               if (messages.length > 0) {
                   errorMessagesHtml = messages.map(msg => `<p class="text-red-300 text-sm mt-1">${msg}</p>`).join('');
               } else {
+                  // This fallback is only used if isError is true but no messages are found
                   errorMessagesHtml = `<p class="text-red-300 text-sm mt-1">An unknown error occurred or no specific error message found.</p>`;
               }
           }
@@ -332,13 +333,15 @@
             if (hourDiff < 24) {
               const index = 23 - hourDiff;
 
-              // Determine if it's an error based on status or extracted messages
+              // Determine if it's an error based on status AND extracted messages
               const hasErrorMessages = extractErrorMessages(e.event).length > 0;
               const isFailedStatus = e.event.metrics && e.event.metrics.statusSummary && 
                                      (e.event.metrics.statusSummary.status === 'failed' || 
                                       e.event.metrics.statusSummary.status === 'partialSuccess');
               
-              // Ensure e.isError is explicitly set or overwritten based on the comprehensive check
+              // CRITICAL FIX: Ensure e.isError is definitively set based on either having messages or failed status
+              // This line ensures that if messages are found OR the status indicates failure/partial success,
+              // then it's classified as an error for both visual and data purposes.
               e.isError = hasErrorMessages || isFailedStatus; 
               
               if (e.isError) {
