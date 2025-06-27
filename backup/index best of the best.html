@@ -647,8 +647,8 @@
             logContainer.prepend(logElement);
           });
 
-          // Sort all log entries by timestamp (newest first) only when new logs are added
-          if (newLogs.length > 0 && logContainer.children.length > 1) {
+          // Sort all log entries by timestamp (newest first) to handle out-of-order arrivals
+          if (logContainer.children.length > 1) {
             const sortedLogs = Array.from(logContainer.children).sort((a, b) => 
               parseInt(b.dataset.timestamp) - parseInt(a.dataset.timestamp)
             );
