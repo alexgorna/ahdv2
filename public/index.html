@@ -7,6 +7,22 @@
   <title>AEP Health Monitoring – Last 24 Hours</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Custom Tailwind config to extend colors for logs -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'log-error-bg': '#2C1D1D', // A darker red background for error logs
+            'log-error-border': '#EF4444', // Red for the left border (Tailwind red-500)
+            'log-event-bg': '#1D232C', // A darker blue background for event logs
+            'log-event-border': '#3B82F6', // Blue for the left border (Tailwind blue-500)
+            'header-bg': '#1A202C', // Dark background for headers and modal
+          }
+        }
+      }
+    }
+  </script>
 </head>
 <body class="bg-gray-900 text-white font-sans">
   <div class="max-w-6xl mx-auto p-4">
@@ -36,15 +52,21 @@
 
     <!-- Event Logs Section -->
     <div class="bg-gray-800 p-4 rounded-lg shadow">
-      <h2 class="text-lg font-semibold mb-2">Event Logs</h2>
-      <div id="logContainer" class="max-h-96 overflow-y-auto space-y-2"></div>
+      <!-- Event Logs Header with Accordion Toggle -->
+      <div id="eventLogsHeader" class="flex justify-between items-center cursor-pointer mb-2">
+        <h2 class="text-lg font-semibold">Event Logs <span id="logCount" class="text-gray-400">(0)</span></h2>
+        <svg id="logsToggleArrow" class="w-5 h-5 text-gray-400 transform transition-transform duration-200 rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+      </div>
+      
+      <div id="logContainer" class="max-h-96 overflow-y-auto space-y-2 pr-2"></div>
     </div>
   </div>
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       // --- Element Caching ---
-      // Cache DOM elements on startup to avoid repeated lookups.
       const modal = document.getElementById('modal');
       const gearBtn = document.getElementById('gearBtn');
       const webhookUrlEl = document.getElementById('webhookUrl');
@@ -53,9 +75,12 @@
       const statusBadge = document.getElementById('statusBadge');
       const logContainer = document.getElementById('logContainer');
       const chartCanvas = document.getElementById('barChart');
+      const logCountEl = document.getElementById('logCount');
+      const eventLogsHeader = document.getElementById('eventLogsHeader'); // New element
+      const logsToggleArrow = document.getElementById('logsToggleArrow'); // New element
       
-      // Keep track of displayed event IDs to prevent duplicates
       const displayedEventIds = new Set();
+      const MAX_LOGS = 200; // Limit the number of log entries
 
       // --- Initial Setup ---
       webhookUrlEl.textContent = window.location.origin + "/webhook";
@@ -67,7 +92,6 @@
       });
 
       copyBtn.addEventListener('click', () => {
-        // Use a more robust copy method that works well in iframes.
         const textToCopy = webhookUrlEl.textContent;
         const textArea = document.createElement('textarea');
         textArea.value = textToCopy;
@@ -79,17 +103,23 @@
           setTimeout(() => copyStatus.classList.add('hidden'), 2000);
         } catch (err) {
           console.error('Failed to copy text: ', err);
-          // Optionally, display an error message to the user here.
+          // Fallback UI for error copying
         }
         document.body.removeChild(textArea);
       });
+
+      // Toggle main log container visibility
+      eventLogsHeader.addEventListener('click', () => {
+        logContainer.classList.toggle('hidden');
+        logsToggleArrow.classList.toggle('rotate-180'); // Rotate arrow on toggle
+      });
+
 
       // --- Chart.js Initialization ---
       const ctx = chartCanvas.getContext('2d');
       const chart = new Chart(ctx, {
         type: 'bar',
         data: {
-          // Dynamically generate labels for the last 24 hours
           labels: Array.from({ length: 24 }, (_, i) => {
             const date = new Date();
             date.setHours(date.getHours() - (23 - i));
@@ -149,29 +179,122 @@
           statusBadge.className = 'bg-red-600 text-xs px-2 py-1 rounded-md transition-colors duration-300';
         }
       };
+
+      /**
+       * Safely gets a nested property from an object.
+       * @param {object} obj - The object to traverse.
+       * @param {string} path - The dot-separated path to the property.
+       * @returns {*} The value of the property or undefined.
+       */
+      const getNestedProperty = (obj, path) => {
+          return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+      };
+
+      /**
+       * Extracts error messages from the event object based on predefined paths.
+       * @param {object} eventData - The 'event' object from the API response.
+       * @returns {string[]} An array of unique error messages.
+       */
+      const extractErrorMessages = (eventData) => {
+          const messages = new Set();
+          const pathsToCheck = [
+              'metrics.statusSummary.errors',
+              'metrics.recordSummary.failedInfo',
+          ];
+          
+          // Check top-level paths
+          pathsToCheck.forEach(path => {
+              const errorsArray = getNestedProperty(eventData, path);
+              if (Array.isArray(errorsArray)) {
+                  errorsArray.forEach(err => {
+                      if (err && err.message) messages.add(err.message);
+                  });
+              }
+          });
+
+          // Check paths within activities array
+          const activities = getNestedProperty(eventData, 'activities');
+          if (Array.isArray(activities)) {
+              activities.forEach(activity => {
+                  if (activity.statusSummary) {
+                      // activity.statusSummary.errors[].message
+                      const activityErrors = getNestedProperty(activity, 'statusSummary.errors');
+                      if (Array.isArray(activityErrors)) {
+                          activityErrors.forEach(err => {
+                              if (err && err.message) messages.add(err.message);
+                          });
+                      }
+                      // activity.statusSummary.extensions.errors[].message
+                      const extensionErrors = getNestedProperty(activity, 'statusSummary.extensions.errors');
+                      if (Array.isArray(extensionErrors)) {
+                          extensionErrors.forEach(err => {
+                              if (err && err.message) messages.add(err.message);
+                          });
+                      }
+                      // activity.statusSummary.extensions.errorDetail
+                      const errorDetail = getNestedProperty(activity, 'statusSummary.extensions.errorDetail');
+                      if (typeof errorDetail === 'string' && errorDetail) {
+                          messages.add(errorDetail);
+                      }
+                  }
+                  // activity.recordSummary.failedInfo[].message
+                  const activityFailedInfo = getNestedProperty(activity, 'recordSummary.failedInfo');
+                  if (Array.isArray(activityFailedInfo)) {
+                      activityFailedInfo.forEach(info => {
+                          if (info && info.message) messages.add(info.message);
+                      });
+                  }
+              });
+          }
+          return Array.from(messages);
+      };
       
       /**
-       * Creates a DOM element for a log entry.
+       * Creates a DOM element for a log entry with accordion functionality.
        * @param {object} e - The event object from the API.
        * @returns {HTMLDivElement} - The created DOM element.
        */
       const createLogElement = (e) => {
           const dt = new Date(e.timestamp);
           const isError = e.isError;
-
           const logEntry = document.createElement('div');
-          logEntry.className = 'p-2 border border-gray-700 rounded-lg bg-gray-900 animate-fade-in';
-          
-          const statusColor = isError ? 'bg-red-600' : 'bg-green-600';
+
+          const borderColor = isError ? 'border-log-error-border' : 'border-log-event-border';
+          const bgColor = isError ? 'bg-log-error-bg' : 'bg-log-event-bg';
+          const statusColor = isError ? 'bg-red-600' : 'bg-blue-600';
           const statusText = isError ? 'Error' : 'Event';
           
+          logEntry.className = `p-2 rounded-lg shadow-sm border-l-4 ${borderColor} ${bgColor} animate-fade-in`;
+
+          let errorMessagesHtml = '';
+          if (isError) {
+              const messages = extractErrorMessages(e.event);
+              if (messages.length > 0) {
+                  errorMessagesHtml = messages.map(msg => `<p class="text-red-300 text-sm mt-1">${msg}</p>`).join('');
+              } else {
+                  errorMessagesHtml = `<p class="text-red-300 text-sm mt-1">An unknown error occurred or no specific error message found.</p>`;
+              }
+          }
+
           logEntry.innerHTML = `
-            <div class="flex justify-between items-center text-sm">
-              <span class="text-gray-400">${dt.toLocaleString()}</span>
-              <span class="px-2 py-0.5 text-xs rounded-md ${statusColor}">${statusText}</span>
+            <div class="log-header flex items-center space-x-2 cursor-pointer py-1">
+              <span class="text-gray-500 text-lg">ⓘ</span>
+              <span class="px-2 py-0.5 text-xs rounded-md ${statusColor} font-semibold">${statusText}</span>
+              <span class="text-gray-400 text-sm">${dt.toLocaleString()}</span>
             </div>
-            <pre class="text-xs whitespace-pre-wrap mt-1 text-gray-200">${JSON.stringify(e.event, null, 2)}</pre>
+            ${errorMessagesHtml}
+            <div class="log-content hidden mt-2 pt-2 border-t border-gray-700">
+              <pre class="text-xs whitespace-pre-wrap text-gray-200">${JSON.stringify(e.event, null, 2)}</pre>
+            </div>
           `;
+          
+          const header = logEntry.querySelector('.log-header');
+          const content = logEntry.querySelector('.log-content');
+
+          header.addEventListener('click', () => {
+              content.classList.toggle('hidden');
+          });
+
           return logEntry;
       };
 
@@ -188,11 +311,9 @@
           const nowTime = Date.now();
           let recentActivity = false;
 
-          // Process data for chart and find new logs
           const newLogs = [];
           data.forEach(e => {
-            // Assume events have a unique 'id' field. If not, another unique property can be used.
-            const eventId = e.id || e.timestamp; // Use timestamp as a fallback unique ID
+            const eventId = e.id || e.timestamp; 
             
             const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
             if (hourDiff < 24) {
@@ -203,7 +324,6 @@
                 perHourEvents[index]++;
               }
 
-              // OPTIMIZATION: Only create and add elements for new, unseen logs.
               if (!displayedEventIds.has(eventId)) {
                   newLogs.push(e);
                   displayedEventIds.add(eventId);
@@ -214,28 +334,24 @@
             }
           });
           
-          // --- Update UI ---
-
-          // OPTIMIZATION: Prepend only new log entries instead of rebuilding the whole list.
-          // Reverse so the newest appears at the very top.
           newLogs.reverse().forEach(logData => {
             const logElement = createLogElement(logData);
             logContainer.prepend(logElement);
           });
           
-          // Limit the number of log entries to prevent high memory usage
-          while (logContainer.children.length > 200) { // Keep max 200 logs
+          while (logContainer.children.length > MAX_LOGS) { 
               logContainer.removeChild(logContainer.lastChild);
           }
+          logCountEl.textContent = `(${logContainer.children.length})`;
+
 
           chart.data.datasets[0].data = perHourEvents;
           chart.data.datasets[1].data = perHourErrors;
-          chart.update('none'); // 'none' for no animation, making updates smoother
+          chart.update('none'); 
 
           updateStatusBadge(recentActivity ? 'live' : 'disconnected');
 
         } catch (error) {
-          // IMPROVEMENT: Log the actual error to the console for easier debugging.
           console.error("Failed to fetch or process events:", error);
           updateStatusBadge('disconnected');
         }
@@ -255,6 +371,21 @@
     }
     .animate-fade-in {
       animation: fade-in 0.5s ease-out forwards;
+    }
+    /* Custom scrollbar styling to match dark theme */
+    #logContainer::-webkit-scrollbar {
+      width: 8px;
+    }
+    #logContainer::-webkit-scrollbar-track {
+      background: #1A202C; /* Darker background for the track */
+      border-radius: 10px;
+    }
+    #logContainer::-webkit-scrollbar-thumb {
+      background: #4A5568; /* Grayish thumb */
+      border-radius: 10px;
+    }
+    #logContainer::-webkit-scrollbar-thumb:hover {
+      background: #667EEA; /* Lighter on hover */
     }
   </style>
 </body>
