@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AEP Health Monitoring – Last 24 Hours</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; background: #f0f4f8; }
+    h1 { display: flex; justify-content: space-between; align-items: center; }
+    #gear { cursor: pointer; font-size: 20px; }
+    #modal { display: none; position: fixed; top: 20px; right: 20px; background: white; border: 1px solid #ccc; padding: 10px; }
+    canvas { width: 100%; max-width: 800px; height: 300px; margin-bottom: 20px; }
+    #log { max-height: 300px; overflow-y: auto; border: 1px solid #ccc; background: #fff; padding: 10px; }
+    .log-entry { margin-bottom: 10px; border-bottom: 1px solid #eee; }
+  </style>
+</head>
+<body>
+  <h1>
+    AEP Health Monitoring – Last 24 Hours
+    <span id="gear">⚙️</span>
+  </h1>
+  <div id="modal">Webhook URL: <code>https://your-domain.com/webhook</code></div>
+  <canvas id="barChart"></canvas>
+  <div id="log"></div>
+
+  <script>
+    const modal = document.getElementById('modal');
+    document.getElementById('gear').onclick = () => {
+      modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+    };
+
+    const ctx = document.getElementById('barChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: Array.from({length: 24}, (_, i) => `${i}:00`),
+        datasets: [{ label: 'Events per Hour', data: Array(24).fill(0), backgroundColor: 'steelblue' }]
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+
+    async function fetchEvents() {
+      const res = await fetch('/api/events');
+      const data = await res.json();
+
+      const now = Date.now();
+      const perHour = Array(24).fill(0);
+      const logs = [];
+
+      data.forEach(e => {
+        const date = new Date(e.timestamp);
+        const diffH = Math.floor((now - e.timestamp) / (3600 * 1000));
+        if (diffH < 24) {
+          perHour[23 - diffH]++;
+          logs.push(`<div class="log-entry"><strong>${date.toISOString()}</strong><br>${JSON.stringify(e.event)}</div>`);
+        }
+      });
+
+      chart.data.datasets[0].data = perHour;
+      chart.update();
+
+      document.getElementById('log').innerHTML = logs.reverse().join('');
+    }
+
+    setInterval(fetchEvents, 5000);
+    fetchEvents();
+  </script>
+</body>
+</html>
