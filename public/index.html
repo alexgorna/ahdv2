@@ -507,9 +507,9 @@
               <span class="text-gray-500 text-lg">ⓘ</span>
               <span class="px-2 py-0.5 text-xs rounded-md ${statusColor} font-semibold">${statusText}</span>
               <span class="text-gray-400 text-sm flex-grow">${formattedDate} ${formattedTime} &nbsp; <span class="font-normal text-gray-500 text-xs">${sandboxNameForDisplay}</span> &nbsp; <span class="font-mono text-gray-500 text-xs">${eventIdForDisplay}</span></span>
+              <button class="copy-raw-event-btn bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded-md font-semibold ml-2">Copy Raw Event</button>
             </div>
             ${errorMessagesHtml}
-            <button class="copy-raw-event-btn bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded-md font-semibold mt-2">Copy Raw Event</button>
             <div class="log-content hidden mt-2 pt-2 border-t border-gray-700">
               <pre class="text-xs whitespace-pre-wrap text-gray-200">${JSON.stringify(e.event, null, 2)}</pre>
             </div>
