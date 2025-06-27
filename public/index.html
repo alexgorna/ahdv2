@@ -2,183 +2,76 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!-- Added viewport meta tag for proper responsive scaling on all devices -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AEP Health Monitoring – Last 24 Hours</title>
+  <title>Event Data Inspector</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Custom Tailwind config to extend colors for logs -->
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            'log-error-bg': '#2C1D1D', // A darker red background for error logs
-            'log-error-border': '#EF4444', // Red for the left border (Tailwind red-500)
-            'log-event-bg': '#1D232C', // A darker blue background for event logs
-            'log-event-border': '#3B82F6', // Blue for the left border (Tailwind blue-500)
-            'header-bg': '#1A202C', // Dark background for headers and modal
-          }
-        }
-      }
+  <style>
+    body {
+      background-color: #1A202C; /* Dark background */
+      color: #E2E8F0; /* Light text */
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
     }
-  </script>
+    .container {
+      max-width: 1024px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+    .event-card {
+      background-color: #2D3748; /* Darker card background */
+      border: 1px solid #4A5568; /* Grey border */
+      border-radius: 0.5rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .event-card.is-error {
+      border-left: 4px solid #EF4444; /* Red border for errors */
+      background-color: #2C1D1D; /* Reddish background for errors */
+    }
+    .event-card.is-event {
+      border-left: 4px solid #3B82F6; /* Blue border for events */
+      background-color: #1D232C; /* Bluish background for events */
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-all;
+      background-color: #171923; /* Even darker for code blocks */
+      padding: 0.75rem;
+      border-radius: 0.25rem;
+      overflow-x: auto; /* Allow horizontal scrolling for long lines */
+    }
+    .badge {
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-error {
+      background-color: #DC2626; /* Red */
+    }
+    .badge-event {
+      background-color: #2563EB; /* Blue */
+    }
+  </style>
 </head>
-<body class="bg-gray-900 text-white font-sans">
-  <div class="max-w-6xl mx-auto p-4">
-    <!-- Header Section -->
-    <div class="flex justify-between items-center mb-4">
-      <h1 class="text-3xl font-bold">AEP Health Monitoring <span class="text-sm font-normal text-gray-400">– Last 24 Hours</span></h1>
-      <div class="flex items-center space-x-2">
-        <span id="statusBadge" class="bg-red-600 text-xs px-2 py-1 rounded-md transition-colors duration-300">Disconnected</span>
-        <button id="gearBtn" class="text-white text-xl focus:outline-none hover:text-gray-300">⚙️</button>
-      </div>
-    </div>
+<body>
+  <div class="container">
+    <h1 class="text-3xl font-bold text-center my-6">Event Data Inspector 🔬</h1>
+    <p class="text-center text-gray-400 mb-6">Fetches data from <code>/api/events</code> every 5 seconds and displays raw payload, extracted messages, and error classification.</p>
+    
+    <div id="status" class="text-center text-gray-400 mb-4">Connecting...</div>
 
-    <!-- Webhook URL Modal (Initially Hidden) -->
-    <div id="modal" class="hidden bg-gray-800 border border-gray-700 p-4 rounded-lg mb-4">
-      <p class="mb-2 font-semibold">Webhook URL:</p>
-      <div class="flex items-center space-x-2">
-        <code id="webhookUrl" class="text-blue-400 break-all bg-gray-900 p-2 rounded-md"></code>
-        <button id="copyBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-md font-semibold">Copy</button>
-        <span id="copyStatus" class="text-green-400 text-xs hidden">Copied!</span>
-      </div>
-    </div>
-
-    <!-- Chart Section -->
-    <div class="bg-gray-800 p-4 rounded-lg shadow mb-6">
-      <canvas id="barChart" height="100"></canvas>
-    </div>
-
-    <!-- Event Logs Section -->
-    <div class="bg-gray-800 p-4 rounded-lg shadow">
-      <!-- Event Logs Header with Accordion Toggle -->
-      <div id="eventLogsHeader" class="flex justify-between items-center cursor-pointer mb-2">
-        <h2 class="text-lg font-semibold">Event Logs <span id="logCount" class="text-gray-400">(0)</span></h2>
-        <svg id="logsToggleArrow" class="w-5 h-5 text-gray-400 transform transition-transform duration-200 rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-        </svg>
-      </div>
-      
-      <div id="logContainer" class="max-h-96 overflow-y-auto space-y-2 pr-2"></div>
+    <div id="eventsList">
+      <!-- Events will be loaded here -->
     </div>
   </div>
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      // --- Element Caching ---
-      const modal = document.getElementById('modal');
-      const gearBtn = document.getElementById('gearBtn');
-      const webhookUrlEl = document.getElementById('webhookUrl');
-      const copyBtn = document.getElementById('copyBtn');
-      const copyStatus = document.getElementById('copyStatus');
-      const statusBadge = document.getElementById('statusBadge');
-      const logContainer = document.getElementById('logContainer');
-      const chartCanvas = document.getElementById('barChart');
-      const logCountEl = document.getElementById('logCount');
-      const eventLogsHeader = document.getElementById('eventLogsHeader'); 
-      const logsToggleArrow = document.getElementById('logsToggleArrow'); 
-      
+      const eventsList = document.getElementById('eventsList');
+      const statusElement = document.getElementById('status');
       const displayedEventIds = new Set();
-      const MAX_LOGS = 200; // Limit the number of log entries
-
-      // --- Initial Setup ---
-      webhookUrlEl.textContent = window.location.origin + "/webhook";
-
-      // --- Event Listeners ---
-      gearBtn.addEventListener('click', () => {
-        modal.classList.toggle('hidden');
-        copyStatus.classList.add('hidden'); // Hide status on toggle
-      });
-
-      copyBtn.addEventListener('click', () => {
-        const textToCopy = webhookUrlEl.textContent;
-        const textArea = document.createElement('textarea');
-        textArea.value = textToCopy;
-        document.body.appendChild(textArea);
-        textArea.select();
-        try {
-          document.execCommand('copy');
-          copyStatus.classList.remove('hidden');
-          setTimeout(() => copyStatus.classList.add('hidden'), 2000);
-        } catch (err) {
-          console.error('Failed to copy text: ', err);
-          // Fallback UI for error copying
-        }
-        document.body.removeChild(textArea);
-      });
-
-      // Toggle main log container visibility
-      eventLogsHeader.addEventListener('click', () => {
-        logContainer.classList.toggle('hidden');
-        logsToggleArrow.classList.toggle('rotate-180'); // Rotate arrow on toggle
-      });
-
-
-      // --- Chart.js Initialization ---
-      const ctx = chartCanvas.getContext('2d');
-      const chart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: Array.from({ length: 24 }, (_, i) => {
-            const date = new Date();
-            date.setHours(date.getHours() - (23 - i));
-            return `${date.getHours()}:00`;
-          }),
-          datasets: [
-            {
-              label: 'Events',
-              data: Array(24).fill(0),
-              backgroundColor: 'rgba(59, 130, 246, 0.7)',
-              borderColor: 'rgb(59, 130, 246)',
-              borderWidth: 1,
-            },
-            {
-              label: 'Errors',
-              data: Array(24).fill(0),
-              backgroundColor: 'rgba(239, 68, 68, 0.7)',
-              borderColor: 'rgb(239, 68, 68)',
-              borderWidth: 1,
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: { 
-              beginAtZero: true,
-              ticks: { color: '#9CA3AF' },
-              grid: { color: 'rgba(255, 255, 255, 0.1)' }
-            },
-            x: {
-              ticks: { color: '#9CA3AF' },
-              grid: { display: false }
-            }
-          },
-          plugins: {
-            legend: {
-              labels: { color: '#E5E7EB' }
-            }
-          }
-        }
-      });
-
-      // --- Data Fetching and UI Update Logic ---
-      
-      /**
-       * Updates the status badge with the given text and style.
-       * @param {('live'|'disconnected')} state - The current connection state.
-       */
-      const updateStatusBadge = (state) => {
-        if (state === 'live') {
-          statusBadge.textContent = 'Live';
-          statusBadge.className = 'bg-green-600 text-xs px-2 py-1 rounded-md transition-colors duration-300';
-        } else {
-          statusBadge.textContent = 'Disconnected';
-          statusBadge.className = 'bg-red-600 text-xs px-2 py-1 rounded-md transition-colors duration-300';
-        }
-      };
+      const MAX_DISPLAY_EVENTS = 50; // Limit to keep the page performant for diagnostics
 
       /**
        * Safely gets a nested property from an object.
@@ -261,158 +154,100 @@
           }
           return Array.from(messages);
       };
-      
-      /**
-       * Creates a DOM element for a log entry with accordion functionality.
-       * @param {object} e - The event object from the API.
-       * @returns {HTMLDivElement} - The created DOM element.
-       */
-      const createLogElement = (e) => {
-          const dt = new Date(e.timestamp);
-          const isError = e.isError; 
-          const logEntry = document.createElement('div');
 
-          const borderColor = isError ? 'border-log-error-border' : 'border-log-event-border';
-          const bgColor = isError ? 'bg-log-error-bg' : 'bg-log-event-bg';
-          const statusColor = isError ? 'bg-red-600' : 'bg-blue-600';
-          const statusText = isError ? 'Error' : 'Event';
-          
-          logEntry.className = `p-2 rounded-lg shadow-sm border-l-4 ${borderColor} ${bgColor} animate-fade-in`;
-
-          let errorMessagesHtml = '';
-          if (isError) {
-              const messages = extractErrorMessages(e.event); 
-              if (messages.length > 0) {
-                  errorMessagesHtml = messages.map(msg => `<p class="text-red-300 text-sm mt-1">${msg}</p>`).join('');
-              } else {
-                  // This fallback is only used if isError is true but no messages are found
-                  errorMessagesHtml = `<p class="text-red-300 text-sm mt-1">An unknown error occurred or no specific error message found.</p>`;
-              }
-          }
-
-          logEntry.innerHTML = `
-            <div class="log-header flex items-center space-x-2 cursor-pointer py-1">
-              <span class="text-gray-500 text-lg">ⓘ</span>
-              <span class="px-2 py-0.5 text-xs rounded-md ${statusColor} font-semibold">${statusText}</span>
-              <span class="text-gray-400 text-sm">${dt.toLocaleString()}</span>
-            </div>
-            ${errorMessagesHtml}
-            <div class="log-content hidden mt-2 pt-2 border-t border-gray-700">
-              <pre class="text-xs whitespace-pre-wrap text-gray-200">${JSON.stringify(e.event, null, 2)}</pre>
-            </div>
-          `;
-          
-          const header = logEntry.querySelector('.log-header');
-          const content = logEntry.querySelector('.log-content');
-
-          header.addEventListener('click', () => {
-              content.classList.toggle('hidden');
-          });
-
-          return logEntry;
-      };
-
-      async function fetchEvents() {
+      async function fetchAndDisplayEvents() {
         try {
+          statusElement.textContent = 'Fetching data...';
           const res = await fetch('/api/events');
           if (!res.ok) {
             throw new Error(`HTTP error! status: ${res.status}`);
           }
           const data = await res.json();
+          statusElement.textContent = `Last updated: ${new Date().toLocaleTimeString()} (Total events in backend: ${data.length})`;
 
-          const perHourEvents = Array(24).fill(0);
-          const perHourErrors = Array(24).fill(0);
-          const nowTime = Date.now();
-          let recentActivity = false;
+          const newEventsToDisplay = [];
 
-          const newLogs = [];
           data.forEach(e => {
             const eventId = e.id || e.timestamp; 
+            if (!displayedEventIds.has(eventId)) {
+                newEventsToDisplay.push(e);
+                displayedEventIds.add(eventId);
+            }
+          });
+          
+          // Sort new events by timestamp to display newest first
+          newEventsToDisplay.sort((a, b) => b.timestamp - a.timestamp);
+
+          newEventsToDisplay.forEach(eventData => {
+            const card = document.createElement('div');
+            card.className = 'event-card';
+
+            const extractedMessages = extractErrorMessages(eventData.event);
+            const isFailedStatus = eventData.event.metrics && eventData.event.metrics.statusSummary && 
+                                   (eventData.event.metrics.statusSummary.status === 'failed' || 
+                                    eventData.event.metrics.statusSummary.status === 'partialSuccess');
             
-            const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
-            if (hourDiff < 24) {
-              const index = 23 - hourDiff;
+            // Determine if it's an error for display based on messages OR status
+            const isError = extractedMessages.length > 0 || isFailedStatus;
+            
+            card.classList.add(isError ? 'is-error' : 'is-event');
 
-              // Determine if it's an error based on status AND extracted messages
-              const hasErrorMessages = extractErrorMessages(e.event).length > 0;
-              const isFailedStatus = e.event.metrics && e.event.metrics.statusSummary && 
-                                     (e.event.metrics.statusSummary.status === 'failed' || 
-                                      e.event.metrics.statusSummary.status === 'partialSuccess');
-              
-              // CRITICAL FIX: Ensure e.isError is definitively set based on either having messages or failed status
-              // This line ensures that if messages are found OR the status indicates failure/partial success,
-              // then it's classified as an error for both visual and data purposes.
-              e.isError = hasErrorMessages || isFailedStatus; 
-              
-              if (e.isError) {
-                perHourErrors[index]++;
-              } else {
-                perHourEvents[index]++;
-              }
-
-              if (!displayedEventIds.has(eventId)) {
-                  newLogs.push(e);
-                  displayedEventIds.add(eventId);
-              }
+            let messagesHtml = '';
+            if (extractedMessages.length > 0) {
+              messagesHtml = `<div class="mt-2 text-sm text-red-300">
+                                <strong>Extracted Messages:</strong>
+                                <ul class="list-disc list-inside ml-2">
+                                  ${extractedMessages.map(msg => `<li>${msg}</li>`).join('')}
+                                </ul>
+                              </div>`;
+            } else if (isError) {
+                // If classified as error but no specific messages were found by extractErrorMessages
+                messagesHtml = `<div class="mt-2 text-sm text-red-300">
+                                  <strong>Extracted Messages:</strong>
+                                  <ul class="list-disc list-inside ml-2">
+                                    <li>No specific error message found by extractor, but status indicates an error.</li>
+                                  </ul>
+                                </div>`;
             }
-            if (nowTime - e.timestamp < 2 * 60 * 1000) {
-              recentActivity = true;
+
+            card.innerHTML = `
+              <div class="flex items-center space-x-3 mb-2">
+                <span class="text-xl">ⓘ</span>
+                <span class="badge ${isError ? 'badge-error' : 'badge-event'}">${isError ? 'Error' : 'Event'}</span>
+                <span class="text-gray-400 text-sm">${new Date(eventData.timestamp).toLocaleString()}</span>
+              </div>
+              <div><strong>Is Error (determined by script):</strong> <span class="${isError ? 'text-red-300' : 'text-blue-300'}">${isError}</span></div>
+              <div><strong>Backend isError flag (if present):</strong> <span class="text-gray-400">${eventData.isError !== undefined ? eventData.isError : 'N/A'}</span></div>
+              <div><strong>Status Summary (if present):</strong> <span class="text-gray-400">${getNestedProperty(eventData.event, 'metrics.statusSummary.status') || 'N/A'}</span></div>
+              ${messagesHtml}
+              <h3 class="font-semibold mt-4 mb-2">Raw Payload:</h3>
+              <pre>${JSON.stringify(eventData, null, 2)}</pre>
+            `;
+            
+            // Prepend new events
+            eventsList.prepend(card);
+
+            // Prune old events from display if limit is exceeded
+            while (eventsList.children.length > MAX_DISPLAY_EVENTS) {
+                const oldestChild = eventsList.lastChild;
+                const oldestEventId = oldestChild.querySelector('pre').textContent.match(/"event_id":\s*"(.*?)"/)?.[1] || oldestChild.querySelector('pre').textContent.match(/"timestamp":\s*(\d+)/)?.[1];
+                if (oldestEventId) {
+                    displayedEventIds.delete(oldestEventId);
+                }
+                eventsList.removeChild(oldestChild);
             }
           });
-          
-          newLogs.reverse().forEach(logData => {
-            const logElement = createLogElement(logData);
-            logContainer.prepend(logElement);
-          });
-          
-          while (logContainer.children.length > MAX_LOGS) { 
-              logContainer.removeChild(logContainer.lastChild);
-          }
-          logCountEl.textContent = `(${logContainer.children.length})`;
-
-
-          chart.data.datasets[0].data = perHourEvents;
-          chart.data.datasets[1].data = perHourErrors;
-          chart.update('none'); 
-
-          updateStatusBadge(recentActivity ? 'live' : 'disconnected');
 
         } catch (error) {
-          console.error("Failed to fetch or process events:", error);
-          updateStatusBadge('disconnected');
+          statusElement.textContent = `Error fetching data: ${error.message}`;
+          console.error("Error in diagnostic tool:", error);
         }
       }
 
       // Initial call and interval setup
-      fetchEvents();
-      setInterval(fetchEvents, 5000); 
+      fetchAndDisplayEvents();
+      setInterval(fetchAndDisplayEvents, 5000);
     });
   </script>
-  
-  <!-- Simple CSS animation for new log entries -->
-  <style>
-    @keyframes fade-in {
-      from { opacity: 0; transform: translateY(-10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .animate-fade-in {
-      animation: fade-in 0.5s ease-out forwards;
-    }
-    /* Custom scrollbar styling to match dark theme */
-    #logContainer::-webkit-scrollbar {
-      width: 8px;
-    }
-    #logContainer::-webkit-scrollbar-track {
-      background: #1A202C; /* Darker background for the track */
-      border-radius: 10px;
-    }
-    #logContainer::-webkit-scrollbar-thumb {
-      background: #4A5568; /* Grayish thumb */
-      border-radius: 10px;
-    }
-    #logContainer::-webkit-scrollbar-thumb:hover {
-      background: #667EEA; /* Lighter on hover */
-    }
-  </style>
 </body>
 </html>
