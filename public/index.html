@@ -21,7 +21,6 @@
 
     <!-- Webhook URL Modal (Initially Hidden) -->
     <div id="modal" class="hidden bg-gray-800 border border-gray-700 p-4 rounded-lg mb-4">
-      <div id="challengeInfo" class="mt-4 text-xs text-gray-200 whitespace-pre-wrap"></div>
       <p class="mb-2 font-semibold">Webhook URL:</p>
       <div class="flex items-center space-x-2">
         <code id="webhookUrl" class="text-blue-400 break-all bg-gray-900 p-2 rounded-md"></code>
@@ -62,24 +61,7 @@
       webhookUrlEl.textContent = window.location.origin + "/webhook";
 
       // --- Event Listeners ---
-      async function fetchChallengeInfo() {
-  try {
-    const res = await fetch('/api/challenge-info');
-    const data = await res.json();
-    if (!data || !data.headers) return;
-    const challengeDetails = document.getElementById('challengeInfo');
-    challengeDetails.innerHTML = `
-Received @ ${data.timestamp || ''}
-<pre class='bg-gray-900 text-gray-300 p-2 rounded overflow-x-auto max-h-64'>${JSON.stringify(data, null, 2)}</pre>`;
-  } catch (err) {
-    console.warn("Challenge info not available yet.");
-  }
-}
-gearBtn.addEventListener('click', () => {
-  modal.classList.toggle('hidden');
-  copyStatus.classList.add('hidden');
-  fetchChallengeInfo();
-
+      gearBtn.addEventListener('click', () => {
         modal.classList.toggle('hidden');
         copyStatus.classList.add('hidden'); // Hide status on toggle
       });
