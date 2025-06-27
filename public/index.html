@@ -71,14 +71,14 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const modal           = document.getElementById('modal');
-      const gearBtn         = document.getElementById('gearBtn');
-      const webhookUrlEl    = document.getElementById('webhookUrl');
-      const copyBtn         = document.getElementById('copyBtn');
-      const copyStatus      = document.getElementById('copyStatus');
-      const statusBadge     = document.getElementById('statusBadge');
-      const logContainer    = document.getElementById('logContainer');
-      const chartCanvas     = document.getElementById('barChart');
+      const modal            = document.getElementById('modal');
+      const gearBtn          = document.getElementById('gearBtn');
+      const webhookUrlEl     = document.getElementById('webhookUrl');
+      const copyBtn          = document.getElementById('copyBtn');
+      const copyStatus       = document.getElementById('copyStatus');
+      const statusBadge      = document.getElementById('statusBadge');
+      const logContainer     = document.getElementById('logContainer');
+      const chartCanvas      = document.getElementById('barChart');
       const displayedEventIds = new Set();
 
       webhookUrlEl.textContent = window.location.origin + "/webhook";
@@ -187,8 +187,11 @@
       /**
        * Build each log entry so that messages live INSIDE
        * the collapsed <summary>, and JSON shows on expand.
+       * Added debug logs to trace input & extraction.
        */
       function createLogElement(evt) {
+        console.log("📦 createLogElement() got:", evt);
+
         // timestamp for display
         const dt      = new Date(evt.timestamp);
         const isError = evt.isError;
@@ -232,8 +235,11 @@
         meta.appendChild(badge);
         meta.appendChild(time);
 
-        // collect and render messages INSIDE the summary
+        // collect and log messages
         const messages = collectAllMessages(evt);
+        console.log("⚙️ Messages for", evt.id, messages);
+
+        // primary message
         const primary  = document.createElement('div');
         primary.className = 'font-medium text-white';
         primary.textContent = messages.shift() || '(no message)';
@@ -279,10 +285,12 @@
       }
 
       async function fetchEvents() {
+        console.log("🛰️ fetchEvents() → calling /api/events…");
         try {
           const res  = await fetch('/api/events');
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
+          console.log("🛰️ fetchEvents() → returned", data);
 
           const perE = Array(24).fill(0);
           const perX = Array(24).fill(0);
@@ -304,6 +312,7 @@
             if (now - e.timestamp < 120000) live = true;
           });
 
+          console.log("🛰️ newLogs:", newLogs);
           newLogs.reverse().forEach(evt => logContainer.prepend(createLogElement(evt)));
           while (logContainer.children.length > 200) {
             logContainer.removeChild(logContainer.lastChild);
