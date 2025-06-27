@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <!-- Added viewport meta tag for proper responsive scaling on all devices -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-initial-scale=1.0">
   <title>AEP Health Monitoring – Last 24 Hours</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -203,6 +203,8 @@
               'metrics.statusSummary.errors',
               'metrics.recordSummary.failedInfo',
               'metrics.recordSummary.skippedInfo', 
+              // Adding a very general path just in case, though less specific
+              'message' // Top-level 'message' field
           ];
 
           topLevelPaths.forEach(path => {
@@ -211,6 +213,8 @@
                   items.forEach(item => {
                       if (item && item.message) messages.add(item.message);
                   });
+              } else if (typeof items === 'string' && path === 'message') { // For direct 'message' string
+                  messages.add(items);
               }
           });
 
@@ -269,7 +273,7 @@
        */
       const createLogElement = (e) => {
           const dt = new Date(e.timestamp);
-          const isError = e.isError; 
+          const isError = e.isError; // This is now set in fetchEvents
           const logEntry = document.createElement('div');
 
           const borderColor = isError ? 'border-log-error-border' : 'border-log-event-border';
@@ -297,6 +301,7 @@
               <span class="text-gray-400 text-sm">${dt.toLocaleString()}</span>
             </div>
             ${errorMessagesHtml}
+            <button class="copy-raw-event-btn bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded-md font-semibold mt-2">Copy Raw Event</button>
             <div class="log-content hidden mt-2 pt-2 border-t border-gray-700">
               <pre class="text-xs whitespace-pre-wrap text-gray-200">${JSON.stringify(e.event, null, 2)}</pre>
             </div>
@@ -304,10 +309,30 @@
           
           const header = logEntry.querySelector('.log-header');
           const content = logEntry.querySelector('.log-content');
+          const copyRawEventBtn = logEntry.querySelector('.copy-raw-event-btn');
 
           header.addEventListener('click', () => {
               content.classList.toggle('hidden');
           });
+
+          // Add event listener for the new Copy Raw Event button
+          if (copyRawEventBtn) {
+              copyRawEventBtn.addEventListener('click', () => {
+                  const textToCopy = JSON.stringify(e.event, null, 2);
+                  const textArea = document.createElement('textarea');
+                  textArea.value = textToCopy;
+                  document.body.appendChild(textArea);
+                  textArea.select();
+                  try {
+                    document.execCommand('copy');
+                    // Optional: Provide visual feedback like 'Copied!'
+                  } catch (err) {
+                    console.error('Failed to copy raw event text: ', err);
+                  }
+                  document.body.removeChild(textArea);
+              });
+          }
+
 
           return logEntry;
       };
@@ -343,13 +368,13 @@
               e.isError = hasErrorMessages || isFailedStatus; 
               
               // --- DEBUGGING LOGS START ---
-              console.group(`Processing Event: ${e.event.id || e.timestamp}`);
-              console.log("Raw Event Payload:", e.event);
-              console.log("Extracted Messages (from extractErrorMessages):", messages);
-              console.log("hasErrorMessages:", hasErrorMessages);
-              console.log("isFailedStatus (based on metrics.statusSummary.status):", isFailedStatus);
-              console.log("Final e.isError classification:", e.isError);
-              console.groupEnd();
+              // console.group(`Processing Event: ${e.event.id || e.timestamp}`);
+              // console.log("Raw Event Payload:", e.event); // Removed this to reduce console spam for user
+              // console.log("Extracted Messages (from extractErrorMessages):", messages);
+              // console.log("hasErrorMessages:", hasErrorMessages);
+              // console.log("isFailedStatus (based on metrics.statusSummary.status):", isFailedStatus);
+              // console.log("Final e.isError classification:", e.isError);
+              // console.groupEnd();
               // --- DEBUGGING LOGS END ---
 
               if (e.isError) {
