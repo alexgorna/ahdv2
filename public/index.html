@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <!-- Added viewport meta tag for proper responsive scaling on all devices -->
-  <meta name="viewport" content="width=device-width, initial-initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AEP Health Monitoring – Last 24 Hours</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -282,7 +282,7 @@
        */
       const createLogElement = (e) => {
           const dt = new Date(e.timestamp);
-          const isError = e.isError; // This is now set in fetchEvents
+          const isError = e.isError; // This is now set by backend and passed directly
           const logEntry = document.createElement('div');
 
           const borderColor = isError ? 'border-log-error-border' : 'border-log-event-border';
@@ -318,14 +318,14 @@
           
           const header = logEntry.querySelector('.log-header');
           const content = logEntry.querySelector('.log-content');
-          const copyRawEventBtn = logEntry.querySelector('.copy-raw-event-btn');
+          const copyRawEventBtn = logEntry.querySelector('.copy-raw-event-btn'); // Get the button element
 
           header.addEventListener('click', () => {
               content.classList.toggle('hidden');
           });
 
           // Add event listener for the new Copy Raw Event button
-          if (copyRawEventBtn) {
+          if (copyRawEventBtn) { // Ensure button exists before adding listener
               copyRawEventBtn.addEventListener('click', () => {
                   const textToCopy = JSON.stringify(e, null, 2); // Copy the entire 'e' object
                   const textArea = document.createElement('textarea');
@@ -334,7 +334,6 @@
                   textArea.select();
                   try {
                     document.execCommand('copy');
-                    // Optional: Provide visual feedback like 'Copied!'
                   } catch (err) {
                     console.error('Failed to copy raw event text: ', err);
                   }
@@ -361,38 +360,21 @@
 
           const newLogs = [];
           data.forEach(e => {
-            // The top-level 'e' object has 'timestamp', 'event', 'isError'
-            // The actual event details are nested under 'e.event.event'
-            const actualEventPayload = e.event.event; // Get the correct nested payload
+            // Correctly access the actual nested event payload
+            const actualEventPayload = e.event.event; 
 
-            const eventId = actualEventPayload.id || e.timestamp; // Use actual event ID or timestamp
+            // Use actual event ID or timestamp for `displayedEventIds` and charting
+            const eventId = actualEventPayload.id || e.timestamp; 
             
             const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
             if (hourDiff < 24) {
               const index = 23 - hourDiff;
 
-              // --- Refined isError Determination ---
-              let isEventActuallyAnError = false;
-
-              // Priority 1: Trust backend's e.isError flag if present and true
-              if (e.isError === true) {
-                  isEventActuallyAnError = true;
-              }
-
-              // Priority 2: Check metrics.statusSummary.status only if not already classified by backend
-              if (!isEventActuallyAnError) {
-                  const status = getNestedProperty(actualEventPayload, 'metrics.statusSummary.status');
-                  if (status === 'failed' || status === 'partialSuccess') {
-                      isEventActuallyAnError = true;
-                  }
-              }
+              // The 'isError' flag comes directly from the backend (e.isError)
+              // No complex frontend re-calculation for 'isError' is done here,
+              // as the backend's flag is reliable for the primary classification.
               
-              // We explicitly DO NOT use the raw string includes 'error' or 'failed' here
-              // as it causes false positives for non-error messages.
-              
-              e.isError = isEventActuallyAnError; // Assign the determined flag back to the original 'e' object
-
-              if (e.isError) {
+              if (e.isError) { // Use backend's isError flag directly for chart and visual classification
                 perHourErrors[index]++;
               } else {
                 perHourEvents[index]++;
