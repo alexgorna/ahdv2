@@ -333,17 +333,25 @@
             if (hourDiff < 24) {
               const index = 23 - hourDiff;
 
-              // Determine if it's an error based on *any* extracted messages or a clear failure status
-              const hasErrorMessages = extractErrorMessages(e.event).length > 0;
+              const messages = extractErrorMessages(e.event); // Extract messages
+              const hasErrorMessages = messages.length > 0;
               const isFailedStatus = e.event.metrics && e.event.metrics.statusSummary && 
                                      (e.event.metrics.statusSummary.status === 'failed' || 
                                       e.event.metrics.statusSummary.status === 'partialSuccess');
               
-              // CRITICAL FIX: Ensure e.isError is definitively set based on either having messages or failed status
-              // This line ensures that if messages are found OR the status indicates failure/partial success,
-              // then it's classified as an error for both visual and data purposes.
+              // Set e.isError based on extracted messages or failed status
               e.isError = hasErrorMessages || isFailedStatus; 
               
+              // --- DEBUGGING LOGS START ---
+              console.group(`Processing Event: ${e.event.id || e.timestamp}`);
+              console.log("Raw Event Payload:", e.event);
+              console.log("Extracted Messages (from extractErrorMessages):", messages);
+              console.log("hasErrorMessages:", hasErrorMessages);
+              console.log("isFailedStatus (based on metrics.statusSummary.status):", isFailedStatus);
+              console.log("Final e.isError classification:", e.isError);
+              console.groupEnd();
+              // --- DEBUGGING LOGS END ---
+
               if (e.isError) {
                 perHourErrors[index]++;
               } else {
