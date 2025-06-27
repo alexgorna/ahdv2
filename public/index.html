@@ -198,9 +198,6 @@
       const extractErrorMessages = (eventData) => {
           const messages = new Set();
           
-          console.groupCollapsed(`extractErrorMessages for event: ${eventData.id || eventData.timestamp}`);
-          console.log("Input eventData to extractor:", eventData);
-
           // Paths to check at the top level of 'eventData'
           const topLevelPaths = [
               'metrics.statusSummary.errors',
@@ -211,34 +208,34 @@
 
           topLevelPaths.forEach(path => {
               const items = getNestedProperty(eventData, path);
-              console.log(`Checking path: ${path}, Result:`, items); // Log what's found at each path
+              // console.log(`Checking path: ${path}, Result:`, items); // Debug log removed
               if (Array.isArray(items)) {
                   items.forEach(item => {
                       if (item && item.message) {
-                          console.log(`  Found array message: ${item.message}`);
+                          // console.log(`  Found array message: ${item.message}`); // Debug log removed
                           messages.add(item.message);
                       }
                   });
               } else if (typeof items === 'string' && path === 'message') {
-                  console.log(`  Found top-level string message: ${items}`);
+                  // console.log(`  Found top-level string message: ${items}`); // Debug log removed
                   messages.add(items);
               }
           });
 
           // Check paths within activities array
           const activities = getNestedProperty(eventData, 'activities');
-          console.log("Checking activities array:", activities);
+          // console.log("Checking activities array:", activities); // Debug log removed
           if (Array.isArray(activities)) {
               activities.forEach((activity, index) => {
-                  console.groupCollapsed(`  Activity ${index}:`);
+                  // console.groupCollapsed(`  Activity ${index}:`); // Debug log removed
                   if (activity) {
                       // activity.statusSummary.errors[].message
                       const activityStatusErrors = getNestedProperty(activity, 'statusSummary.errors');
-                      console.log(`    Activity ${index} - statusSummary.errors:`, activityStatusErrors);
+                      // console.log(`    Activity ${index} - statusSummary.errors:`, activityStatusErrors); // Debug log removed
                       if (Array.isArray(activityStatusErrors)) {
                           activityStatusErrors.forEach(err => {
                               if (err && err.message) {
-                                  console.log(`      Found activity status error message: ${err.message}`);
+                                  // console.log(`      Found activity status error message: ${err.message}`); // Debug log removed
                                   messages.add(err.message);
                               }
                           });
@@ -246,11 +243,11 @@
                       
                       // activity.statusSummary.extensions.errors[].message
                       const activityExtensionErrors = getNestedProperty(activity, 'statusSummary.extensions.errors');
-                      console.log(`    Activity ${index} - statusSummary.extensions.errors:`, activityExtensionErrors);
+                      // console.log(`    Activity ${index} - statusSummary.extensions.errors:`, activityExtensionErrors); // Debug log removed
                       if (Array.isArray(activityExtensionErrors)) {
                           activityExtensionErrors.forEach(err => {
                               if (err && err.message) {
-                                  console.log(`      Found activity extension error message: ${err.message}`);
+                                  // console.log(`      Found activity extension error message: ${err.message}`); // Debug log removed
                                   messages.add(err.message);
                               }
                           });
@@ -258,19 +255,19 @@
                       
                       // activity.statusSummary.extensions.errorDetail
                       const errorDetail = getNestedProperty(activity, 'statusSummary.extensions.errorDetail');
-                      console.log(`    Activity ${index} - statusSummary.extensions.errorDetail:`, errorDetail);
+                      // console.log(`    Activity ${index} - statusSummary.extensions.errorDetail:`, errorDetail); // Debug log removed
                       if (typeof errorDetail === 'string' && errorDetail) {
-                          console.log(`      Found activity extension errorDetail: ${errorDetail}`);
+                          // console.log(`      Found activity extension errorDetail: ${errorDetail}`); // Debug log removed
                           messages.add(errorDetail);
                       }
 
                       // activity.recordSummary.failedInfo[].message
                       const activityFailedInfo = getNestedProperty(activity, 'recordSummary.failedInfo');
-                      console.log(`    Activity ${index} - recordSummary.failedInfo:`, activityFailedInfo);
+                      // console.log(`    Activity ${index} - recordSummary.failedInfo:`, activityFailedInfo); // Debug log removed
                       if (Array.isArray(activityFailedInfo)) {
                           activityFailedInfo.forEach(info => {
                               if (info && info.message) {
-                                  console.log(`      Found activity failed info message: ${info.message}`);
+                                  // console.log(`      Found activity failed info message: ${info.message}`); // Debug log removed
                                   messages.add(info.message);
                               }
                           });
@@ -278,21 +275,21 @@
 
                       // activity.recordSummary.skippedInfo[].message
                       const activitySkippedInfo = getNestedProperty(activity, 'recordSummary.skippedInfo');
-                      console.log(`    Activity ${index} - recordSummary.skippedInfo:`, activitySkippedInfo);
+                      // console.log(`    Activity ${index} - recordSummary.skippedInfo:`, activitySkippedInfo); // Debug log removed
                       if (Array.isArray(activitySkippedInfo)) {
                           activitySkippedInfo.forEach(info => {
                               if (info && info.message) {
-                                  console.log(`      Found activity skipped info message: ${info.message}`);
+                                  // console.log(`      Found activity skipped info message: ${info.message}`); // Debug log removed
                                   messages.add(info.message);
                               }
                           });
                       }
                   }
-                  console.groupEnd();
+                  // console.groupEnd(); // Debug log removed
               });
           }
-          console.log("Final extracted messages from extractor:", Array.from(messages));
-          console.groupEnd();
+          // console.log("Final extracted messages from extractor:", Array.from(messages)); // Debug log removed
+          // console.groupEnd(); // Debug log removed
           return Array.from(messages);
       };
       
@@ -348,7 +345,7 @@
           // Add event listener for the new Copy Raw Event button
           if (copyRawEventBtn) {
               copyRawEventBtn.addEventListener('click', () => {
-                  const textToCopy = JSON.stringify(e.event, null, 2);
+                  const textToCopy = JSON.stringify(e, null, 2); // Copy the entire 'e' object
                   const textArea = document.createElement('textarea');
                   textArea.value = textToCopy;
                   document.body.appendChild(textArea);
@@ -388,17 +385,27 @@
             if (hourDiff < 24) {
               const index = 23 - hourDiff;
 
-              // The extractErrorMessages function now contains detailed console logs
-              const messages = extractErrorMessages(e.event); 
-              const hasErrorMessages = messages.length > 0;
-              const isFailedStatus = e.event.metrics && e.event.metrics.statusSummary && 
-                                     (e.event.metrics.statusSummary.status === 'failed' || 
-                                      e.event.metrics.statusSummary.status === 'partialSuccess');
+              // Determine if it's an error:
+              // 1. First, trust the backend's e.isError flag if present.
+              // 2. Fallback: Check if the raw stringified event contains "error" (like backend does).
+              // 3. Fallback: Check if the metrics.statusSummary.status is 'failed' or 'partialSuccess'.
+              let isErrorEvent = e.isError === true; // Backend's flag is primary
+
+              if (!isErrorEvent) { // If backend didn't mark it, try our own checks
+                  const rawEventString = JSON.stringify(e.event).toLowerCase();
+                  if (rawEventString.includes('error') || rawEventString.includes('failed')) {
+                      isErrorEvent = true;
+                  }
+              }
+
+              if (!isErrorEvent) { // Final check based on status
+                  const status = getNestedProperty(e.event, 'metrics.statusSummary.status');
+                  if (status === 'failed' || status === 'partialSuccess') {
+                      isErrorEvent = true;
+                  }
+              }
               
-              e.isError = hasErrorMessages || isFailedStatus; 
-              
-              // console.group removed for less console spam as requested previously
-              // Detailed logs are now inside extractErrorMessages itself.
+              e.isError = isErrorEvent; // Assign the determined flag back to the event object
 
               if (e.isError) {
                 perHourErrors[index]++;
