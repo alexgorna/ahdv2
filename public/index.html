@@ -197,18 +197,19 @@
        */
       const extractErrorMessages = (eventData) => {
           const messages = new Set();
-          const pathsToCheck = [
+          
+          // Paths to check at the top level of 'eventData'
+          const topLevelPaths = [
               'metrics.statusSummary.errors',
               'metrics.recordSummary.failedInfo',
               'metrics.recordSummary.skippedInfo', 
           ];
-          
-          // Check top-level paths
-          pathsToCheck.forEach(path => {
-              const errorsArray = getNestedProperty(eventData, path);
-              if (Array.isArray(errorsArray)) {
-                  errorsArray.forEach(err => {
-                      if (err && err.message) messages.add(err.message);
+
+          topLevelPaths.forEach(path => {
+              const items = getNestedProperty(eventData, path);
+              if (Array.isArray(items)) {
+                  items.forEach(item => {
+                      if (item && item.message) messages.add(item.message);
                   });
               }
           });
@@ -217,35 +218,44 @@
           const activities = getNestedProperty(eventData, 'activities');
           if (Array.isArray(activities)) {
               activities.forEach(activity => {
-                  if (activity.statusSummary) {
-                      const activityErrors = getNestedProperty(activity, 'statusSummary.errors');
-                      if (Array.isArray(activityErrors)) {
-                          activityErrors.forEach(err => {
+                  if (activity) {
+                      // activity.statusSummary.errors[].message
+                      const activityStatusErrors = getNestedProperty(activity, 'statusSummary.errors');
+                      if (Array.isArray(activityStatusErrors)) {
+                          activityStatusErrors.forEach(err => {
                               if (err && err.message) messages.add(err.message);
                           });
                       }
-                      const extensionErrors = getNestedProperty(activity, 'statusSummary.extensions.errors');
-                      if (Array.isArray(extensionErrors)) {
-                          extensionErrors.forEach(err => {
+                      
+                      // activity.statusSummary.extensions.errors[].message
+                      const activityExtensionErrors = getNestedProperty(activity, 'statusSummary.extensions.errors');
+                      if (Array.isArray(activityExtensionErrors)) {
+                          activityExtensionErrors.forEach(err => {
                               if (err && err.message) messages.add(err.message);
                           });
                       }
+                      
+                      // activity.statusSummary.extensions.errorDetail
                       const errorDetail = getNestedProperty(activity, 'statusSummary.extensions.errorDetail');
                       if (typeof errorDetail === 'string' && errorDetail) {
                           messages.add(errorDetail);
                       }
-                  }
-                  const activityFailedInfo = getNestedProperty(activity, 'recordSummary.failedInfo');
-                  if (Array.isArray(activityFailedInfo)) {
-                      activityFailedInfo.forEach(info => {
-                          if (info && info.message) messages.add(info.message);
-                      });
-                  }
-                  const activitySkippedInfo = getNestedProperty(activity, 'recordSummary.skippedInfo');
-                  if (Array.isArray(activitySkippedInfo)) {
-                      activitySkippedInfo.forEach(info => {
-                          if (info && info.message) messages.add(info.message);
-                      });
+
+                      // activity.recordSummary.failedInfo[].message
+                      const activityFailedInfo = getNestedProperty(activity, 'recordSummary.failedInfo');
+                      if (Array.isArray(activityFailedInfo)) {
+                          activityFailedInfo.forEach(info => {
+                              if (info && info.message) messages.add(info.message);
+                          });
+                      }
+
+                      // activity.recordSummary.skippedInfo[].message
+                      const activitySkippedInfo = getNestedProperty(activity, 'recordSummary.skippedInfo');
+                      if (Array.isArray(activitySkippedInfo)) {
+                          activitySkippedInfo.forEach(info => {
+                              if (info && info.message) messages.add(info.message);
+                          });
+                      }
                   }
               });
           }
@@ -259,7 +269,7 @@
        */
       const createLogElement = (e) => {
           const dt = new Date(e.timestamp);
-          const isError = e.isError;
+          const isError = e.isError; // This is now set in fetchEvents
           const logEntry = document.createElement('div');
 
           const borderColor = isError ? 'border-log-error-border' : 'border-log-event-border';
@@ -271,7 +281,7 @@
 
           let errorMessagesHtml = '';
           if (isError) {
-              const messages = extractErrorMessages(e.event);
+              const messages = extractErrorMessages(e.event); // Use e.event directly
               if (messages.length > 0) {
                   errorMessagesHtml = messages.map(msg => `<p class="text-red-300 text-sm mt-1">${msg}</p>`).join('');
               } else {
@@ -303,7 +313,6 @@
 
       async function fetchEvents() {
         try {
-          // Restore fetching from the API endpoint
           const res = await fetch('/api/events');
           if (!res.ok) {
             throw new Error(`HTTP error! status: ${res.status}`);
@@ -317,9 +326,6 @@
 
           const newLogs = [];
           data.forEach(e => {
-            // Use event.id if available, otherwise timestamp
-            // Note: If the backend does not provide `e.id`, this will default to `e.timestamp`.
-            // For true uniqueness, ensure the backend provides a unique ID per event.
             const eventId = e.id || e.timestamp; 
             
             const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
@@ -332,10 +338,8 @@
                                      (e.event.metrics.statusSummary.status === 'failed' || 
                                       e.event.metrics.statusSummary.status === 'partialSuccess');
               
-              // This `e.isError` assignment assumes the `data` array is mutable.
-              // If `data` comes from a read-only source or is a large array copied,
-              // consider creating a new object for `newLogs` to avoid modifying original `data`.
-              e.isError = e.isError || hasErrorMessages || isFailedStatus; 
+              // Ensure e.isError is explicitly set or overwritten based on the comprehensive check
+              e.isError = hasErrorMessages || isFailedStatus; 
               
               if (e.isError) {
                 perHourErrors[index]++;
@@ -378,7 +382,7 @@
 
       // Initial call and interval setup
       fetchEvents();
-      setInterval(fetchEvents, 5000); // Re-enabled interval for live data
+      setInterval(fetchEvents, 5000); 
     });
   </script>
   
