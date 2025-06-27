@@ -155,25 +155,34 @@
        * @param {object} e - The event object from the API.
        * @returns {HTMLDivElement} - The created DOM element.
        */
+      
       const createLogElement = (e) => {
-          const dt = new Date(e.timestamp);
-          const isError = e.isError;
+        const dt = new Date(e.timestamp);
+        const isError = e.isError;
+        const statusColor = isError ? 'bg-red-600' : 'bg-green-600';
+        const statusText = isError ? 'Error' : 'Event';
 
-          const logEntry = document.createElement('div');
-          logEntry.className = 'p-2 border border-gray-700 rounded-lg bg-gray-900 animate-fade-in';
-          
-          const statusColor = isError ? 'bg-red-600' : 'bg-green-600';
-          const statusText = isError ? 'Error' : 'Event';
-          
-          logEntry.innerHTML = `
-            <div class="flex justify-between items-center text-sm">
-              <span class="text-gray-400">${dt.toLocaleString()}</span>
-              <span class="px-2 py-0.5 text-xs rounded-md ${statusColor}">${statusText}</span>
-            </div>
-            <pre class="text-xs whitespace-pre-wrap mt-1 text-gray-200">${JSON.stringify(e.event, null, 2)}</pre>
-          `;
-          return logEntry;
+        const logEntry = document.createElement('div');
+        logEntry.className = 'border border-gray-700 rounded-lg bg-gray-900 overflow-hidden animate-fade-in';
+
+        logEntry.innerHTML = `
+          <button class="w-full text-left p-2 flex justify-between items-center bg-gray-800 hover:bg-gray-700 transition">
+            <span class="text-sm text-gray-400">\${dt.toLocaleString()}</span>
+            <span class="px-2 py-0.5 text-xs rounded-md \${statusColor}">\${statusText}</span>
+          </button>
+          <div class="p-2 hidden text-xs whitespace-pre-wrap text-gray-200 bg-gray-900 border-t border-gray-700">
+            \${JSON.stringify(e.event, null, 2)}
+          </div>
+        `;
+
+        const [toggleBtn, contentDiv] = logEntry.children;
+        toggleBtn.addEventListener('click', () => {
+          contentDiv.classList.toggle('hidden');
+        });
+
+        return logEntry;
       };
+    
 
       async function fetchEvents() {
         try {
