@@ -18,6 +18,10 @@
             'log-event-bg': '#1D232C', // A darker blue background for event logs
             'log-event-border': '#3B82F6', // Blue for the left border (Tailwind blue-500)
             'header-bg': '#1A202C', // Dark background for headers and modal
+            'teams-bg': '#2C2C2C', // Dark background for Teams mock
+            'teams-chat-bg': '#3A3A3A', // Chat bubble background
+            'teams-text': '#F3F3F3', // Light text for Teams mock
+            'teams-meta-text': '#BBBBBB', // Lighter text for time/meta
           }
         }
       }
@@ -51,7 +55,7 @@
     </div>
 
     <!-- Event Logs Section -->
-    <div class="bg-gray-800 p-4 rounded-lg shadow">
+    <div class="bg-gray-800 p-4 rounded-lg shadow mb-6">
       <!-- Event Logs Header with Accordion Toggle -->
       <div id="eventLogsHeader" class="flex justify-between items-center cursor-pointer mb-2">
         <h2 class="text-lg font-semibold">Event Logs <span id="logCount" class="text-gray-400">(0)</span></h2>
@@ -62,6 +66,18 @@
       
       <div id="logContainer" class="max-h-96 overflow-y-auto space-y-2 pr-2"></div>
     </div>
+
+    <!-- MS Teams Mock Section -->
+    <div class="bg-teams-bg p-4 rounded-lg shadow">
+      <h2 class="text-lg font-semibold mb-4">MS Teams Mock</h2>
+      <div id="teamsMockContent" class="bg-teams-chat-bg p-4 rounded-lg text-teams-text text-sm relative">
+        <div class="absolute top-2 right-2 text-teams-meta-text text-xs" id="teamsMessageTime"></div>
+        <p class="mb-2">No error yet to display in Teams mock.</p>
+        <!-- Error content will be inserted here -->
+      </div>
+      <button id="copyTeamsMessageBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-md font-semibold mt-4">Copy Message</button>
+    </div>
+
   </div>
 
   <script>
@@ -78,9 +94,16 @@
       const logCountEl = document.getElementById('logCount');
       const eventLogsHeader = document.getElementById('eventLogsHeader'); 
       const logsToggleArrow = document.getElementById('logsToggleArrow'); 
+
+      // MS Teams Mock Elements
+      const teamsMockContent = document.getElementById('teamsMockContent');
+      const teamsMessageTime = document.getElementById('teamsMessageTime');
+      const copyTeamsMessageBtn = document.getElementById('copyTeamsMessageBtn');
       
       const displayedEventIds = new Set();
       const MAX_LOGS = 200; // Limit the number of log entries
+
+      let latestErrorMessage = ''; // Store the latest message for the copy button
 
       // --- Initial Setup ---
       webhookUrlEl.textContent = window.location.origin + "/webhook";
@@ -112,6 +135,22 @@
       eventLogsHeader.addEventListener('click', () => {
         logContainer.classList.toggle('hidden');
         logsToggleArrow.classList.toggle('rotate-180'); // Rotate arrow on toggle
+      });
+
+      // Copy Teams Mock Message
+      copyTeamsMessageBtn.addEventListener('click', () => {
+        const textToCopy = latestErrorMessage;
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          // Optionally, display a "Copied!" status next to the button
+        } catch (err) {
+          console.error('Failed to copy Teams message: ', err);
+        }
+        document.body.removeChild(textArea);
       });
 
 
@@ -275,6 +314,46 @@
       };
       
       /**
+       * Updates the MS Teams mock section with the latest error details.
+       * @param {object} errorEvent - The latest error event object (e.g., e from fetchEvents).
+       */
+      const updateTeamsMock = (errorEvent) => {
+        const actualEventPayload = errorEvent.event.event;
+        const dt = new Date(errorEvent.timestamp);
+
+        // Format time to 24-hour format (HH:MM)
+        const formattedTime = new Intl.DateTimeFormat('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false // 24-hour format
+        }).format(dt);
+
+        const alertName = getNestedProperty(actualEventPayload, 'alertName') || 'N/A';
+        const sandboxName = getNestedProperty(actualEventPayload, 'sandboxName') || 'N/A';
+        const extractedMessages = extractErrorMessages(actualEventPayload);
+
+        let errorMessagesHtml = '';
+        if (extractedMessages.length > 0) {
+            errorMessagesHtml = extractedMessages.map(msg => `"${msg}"`).join('\n');
+        } else {
+            errorMessagesHtml = "No specific error message found.";
+        }
+
+        const teamsMessageText = `Alert Name: "${alertName}"\n\nSandbox: "${sandboxName}"\n\nERRORS:\n${errorMessagesHtml}`;
+        latestErrorMessage = teamsMessageText; // Store for copy button
+
+        teamsMessageTime.textContent = formattedTime; // Update timestamp in mock
+        teamsMockContent.innerHTML = `
+          <div class="absolute top-2 right-2 text-teams-meta-text text-xs">${formattedTime}</div>
+          <p class="mb-2">Alert Name: "${alertName}"</p>
+          <p class="mb-2">Sandbox: "${sandboxName}"</p>
+          <p class="font-bold mb-1">ERRORS:</p>
+          <pre class="text-teams-text text-xs">${errorMessagesHtml}</pre>
+        `;
+      };
+
+
+      /**
        * Creates a DOM element for a log entry with accordion functionality.
        * @param {object} e - The event object from the API.
        * @returns {HTMLDivElement} - The created DOM element.
@@ -410,6 +489,9 @@
           });
 
 
+          // Variable to store the latest error event for the Teams mock
+          let latestErrorEvent = null;
+
           data.forEach(e => {
             // Correctly access the actual nested event payload for its ID and content
             const actualEventPayload = e.event.event; 
@@ -427,6 +509,10 @@
               // This is used directly for chart and visual classification.
               if (e.isError) { 
                 perHourErrors[index]++;
+                // If this is an error and newer than the current latest, update it
+                if (!latestErrorEvent || e.timestamp > latestErrorEvent.timestamp) {
+                    latestErrorEvent = e;
+                }
               } else {
                 perHourEvents[index]++;
               }
@@ -465,6 +551,15 @@
           chart.update('none'); 
 
           updateStatusBadge(recentActivity ? 'live' : 'disconnected');
+
+          // Update MS Teams mock with the latest error event
+          if (latestErrorEvent) {
+            updateTeamsMock(latestErrorEvent);
+          } else {
+            teamsMockContent.innerHTML = '<p class="absolute top-2 right-2 text-teams-meta-text text-xs" id="teamsMessageTime"></p><p class="mb-2">No error yet to display in Teams mock.</p>';
+            latestErrorMessage = '';
+          }
+
 
         } catch (error) {
           console.error("Failed to fetch or process events:", error);
