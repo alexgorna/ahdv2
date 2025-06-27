@@ -563,7 +563,7 @@
               const removedChild = logContainer.lastChild;
               // Assuming eventIdForTracking is stored as a data attribute (e.g., data-tracking-id)
               // If not, this part will not accurately clean the Set, but visual limit will be enforced.
-              // For now, we trust the visual limit is sufficient given Set is for adding only.
+              // Given the complexity, and that only MAX_LOGS is a visual limit, let's keep the Set for adding only.
               logContainer.removeChild(removedChild);
           }
           
