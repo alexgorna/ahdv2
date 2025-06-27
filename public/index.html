@@ -120,11 +120,8 @@
       const chart = new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: Array.from({ length: 24 }, (_, i) => {
-            const date = new Date();
-            date.setHours(date.getHours() - (23 - i));
-            return `${date.getHours()}:00`;
-          }),
+          // Labels will now be generated dynamically inside fetchEvents
+          labels: [], 
           datasets: [
             {
               label: 'Events',
@@ -299,7 +296,28 @@
               hour12: false // 24-hour format
           }).format(dt);
 
-          const isError = e.isError; // This is now set by backend and passed directly
+          // Determine isError based on combined signals
+          let isError = e.isError === true; // Priority 1: Backend flag
+
+          // Get the actual nested event payload for deeper checks
+          const actualEventPayload = e.event.event; 
+
+          // Priority 2: Check for presence of messages if backend didn't classify as error
+          if (!isError) {
+              const messagesFromPayload = extractErrorMessages(actualEventPayload);
+              if (messagesFromPayload.length > 0) {
+                  isError = true;
+              }
+          }
+
+          // Priority 3: Check status if not yet classified
+          if (!isError) {
+              const status = getNestedProperty(actualEventPayload, 'metrics.statusSummary.status');
+              if (status === 'failed' || status === 'partialSuccess') {
+                  isError = true;
+              }
+          }
+
           const logEntry = document.createElement('div');
 
           const borderColor = isError ? 'border-log-error-border' : 'border-log-event-border';
@@ -322,12 +340,15 @@
 
           // Get event_id for display: Prioritize e.event.event.event_id, then e.event.event.id, then 'N/A'
           const eventIdForDisplay = getNestedProperty(e.event.event, 'event_id') || getNestedProperty(e.event.event, 'id') || 'N/A';
+          // Get sandboxName for display
+          const sandboxNameForDisplay = getNestedProperty(e.event.event, 'sandboxName') || 'N/A';
+
 
           logEntry.innerHTML = `
             <div class="log-header flex items-center space-x-2 cursor-pointer py-1">
               <span class="text-gray-500 text-lg">ⓘ</span>
               <span class="px-2 py-0.5 text-xs rounded-md ${statusColor} font-semibold">${statusText}</span>
-              <span class="text-gray-400 text-sm flex-grow">${formattedDate} ${formattedTime} &nbsp; <span class="font-mono text-gray-500 text-xs">${eventIdForDisplay}</span></span>
+              <span class="text-gray-400 text-sm flex-grow">${formattedDate} ${formattedTime} &nbsp; <span class="font-normal text-gray-500 text-xs">${sandboxNameForDisplay}</span> &nbsp; <span class="font-mono text-gray-500 text-xs">${eventIdForDisplay}</span></span>
             </div>
             ${errorMessagesHtml}
             <button class="copy-raw-event-btn bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded-md font-semibold mt-2">Copy Raw Event</button>
@@ -379,14 +400,24 @@
           let recentActivity = false;
 
           const newLogs = [];
+          
+          // Regenerate chart labels to reflect current 24 hours
+          chart.data.labels = Array.from({ length: 24 }, (_, i) => {
+            const date = new Date();
+            date.setHours(date.getHours() - (23 - i)); // Go back 23 hours from current for the first label, up to current hour
+            const hour = date.getHours();
+            return `${hour}:00`;
+          });
+
+
           data.forEach(e => {
             // Correctly access the actual nested event payload for its ID and content
             const actualEventPayload = e.event.event; 
 
             // Corrected eventId logic for displayedEventIds Set to ensure uniqueness and prevent skipping
-            // Combine e.timestamp (unique per server log entry) with an ID from the actual payload if available.
-            const uniquePayloadId = getNestedProperty(actualEventPayload, 'event_id') || getNestedProperty(actualEventPayload, 'id') || '';
-            const eventIdForTracking = `${e.timestamp}-${uniquePayloadId}`; // This ensures true uniqueness for the Set
+            // Use e.timestamp as the base, and append a unique ID from the payload for collision avoidance.
+            const uniquePayloadIdPart = getNestedProperty(actualEventPayload, 'event_id') || getNestedProperty(actualEventPayload, 'id') || String(Math.random()).substring(2, 8); // Add random part if no ID exists.
+            const eventIdForTracking = `${e.timestamp}-${uniquePayloadIdPart}`; // This ensures true uniqueness for the Set
             
             const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
             if (hourDiff < 24) {
@@ -417,19 +448,16 @@
           });
           
           while (logContainer.children.length > MAX_LOGS) { 
-              // When removing, remove its ID from the set based on its generated unique ID
-              const removedChild = logContainer.lastChild;
-              // Assuming eventIdForDisplay is available or can be re-derived from the innerHTML of the removed child
-              // For robustness, find the eventId from the JSON data stored on the element, or regenerate if needed.
-              // For simplicity now, if the element's inner HTML can guarantee the ID, retrieve it.
-              // A more robust way would be to store `eventIdForTracking` as a data attribute on the logElement when created.
-              // For now, let's just remove the oldest. The Set might grow larger than MAX_LOGS if IDs aren't perfectly aligned during removal.
-              logContainer.removeChild(removedChild);
-              // Note: If exact eventId mapping to DOM element is needed for precise Set cleanup,
-              // add `logEntry.dataset.eventId = eventIdForTracking;` in createLogElement
-              // and then use `removedChild.dataset.eventId` here.
+              // To accurately remove from displayedEventIds set, we need the eventIdForTracking of the removed element.
+              // A more robust solution involves storing eventIdForTracking as a data attribute on the logElement.
+              // For now, since we only *remove* the oldest, the Set might eventually contain IDs of removed elements,
+              // but it won't impact *adding* new unique events. The MAX_LOGS visual limit will still be enforced.
+              logContainer.removeChild(logContainer.lastChild);
           }
-          logCountEl.textContent = `(${logContainer.children.length})`;
+          
+          // Update log count display: "Event Logs (X/Last)" if at MAX_LOGS
+          const currentLogCount = logContainer.children.length;
+          logCountEl.textContent = `(${currentLogCount}${currentLogCount === MAX_LOGS ? '/Last' : ''})`;
 
 
           chart.data.datasets[0].data = perHourEvents;
