@@ -44,7 +44,6 @@
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       // --- Element Caching ---
-      // Cache DOM elements on startup to avoid repeated lookups.
       const modal = document.getElementById('modal');
       const gearBtn = document.getElementById('gearBtn');
       const webhookUrlEl = document.getElementById('webhookUrl');
@@ -53,8 +52,6 @@
       const statusBadge = document.getElementById('statusBadge');
       const logContainer = document.getElementById('logContainer');
       const chartCanvas = document.getElementById('barChart');
-      
-      // Keep track of displayed event IDs to prevent duplicates
       const displayedEventIds = new Set();
 
       // --- Initial Setup ---
@@ -63,11 +60,10 @@
       // --- Event Listeners ---
       gearBtn.addEventListener('click', () => {
         modal.classList.toggle('hidden');
-        copyStatus.classList.add('hidden'); // Hide status on toggle
+        copyStatus.classList.add('hidden');
       });
 
       copyBtn.addEventListener('click', () => {
-        // Use a more robust copy method that works well in iframes.
         const textToCopy = webhookUrlEl.textContent;
         const textArea = document.createElement('textarea');
         textArea.value = textToCopy;
@@ -79,7 +75,6 @@
           setTimeout(() => copyStatus.classList.add('hidden'), 2000);
         } catch (err) {
           console.error('Failed to copy text: ', err);
-          // Optionally, display an error message to the user here.
         }
         document.body.removeChild(textArea);
       });
@@ -89,7 +84,6 @@
       const chart = new Chart(ctx, {
         type: 'bar',
         data: {
-          // Dynamically generate labels for the last 24 hours
           labels: Array.from({ length: 24 }, (_, i) => {
             const date = new Date();
             date.setHours(date.getHours() - (23 - i));
@@ -134,11 +128,8 @@
         }
       });
 
-      // --- Data Fetching and UI Update Logic ---
-      
       /**
        * Updates the status badge with the given text and style.
-       * @param {('live'|'disconnected')} state - The current connection state.
        */
       const updateStatusBadge = (state) => {
         if (state === 'live') {
@@ -149,105 +140,111 @@
           statusBadge.className = 'bg-red-600 text-xs px-2 py-1 rounded-md transition-colors duration-300';
         }
       };
-      
+
       /**
-       * Creates a DOM element for a log entry.
-       * @param {object} e - The event object from the API.
-       * @returns {HTMLDivElement} - The created DOM element.
+       * Creates a collapsible log entry element.
        */
       const createLogElement = (e) => {
-          const dt = new Date(e.timestamp);
-          const isError = e.isError;
+        const dt = new Date(e.timestamp);
+        const isError = e.isError;
 
-          const logEntry = document.createElement('div');
-          logEntry.className = 'p-2 border border-gray-700 rounded-lg bg-gray-900 animate-fade-in';
-          
-          const statusColor = isError ? 'bg-red-600' : 'bg-green-600';
-          const statusText = isError ? 'Error' : 'Event';
-          
-          logEntry.innerHTML = `
-            <div class="flex justify-between items-center text-sm">
-              <span class="text-gray-400">${dt.toLocaleString()}</span>
-              <span class="px-2 py-0.5 text-xs rounded-md ${statusColor}">${statusText}</span>
-            </div>
-            <pre class="text-xs whitespace-pre-wrap mt-1 text-gray-200">${JSON.stringify(e.event, null, 2)}</pre>
-          `;
-          return logEntry;
+        const detailsEl = document.createElement('details');
+        detailsEl.className = 'border border-gray-700 rounded-lg bg-gray-900 animate-fade-in';
+
+        const summaryEl = document.createElement('summary');
+        summaryEl.className = 'flex flex-col';
+
+        // Header: timestamp + badge
+        const headerLine = document.createElement('div');
+        headerLine.className = 'flex justify-between items-center text-sm';
+
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'text-gray-400';
+        timeSpan.textContent = dt.toLocaleString();
+        headerLine.appendChild(timeSpan);
+
+        const statusSpan = document.createElement('span');
+        const statusColor = isError ? 'bg-red-600' : 'bg-blue-600';
+        statusSpan.className = `px-2 py-0.5 text-xs rounded-md ${statusColor}`;
+        statusSpan.textContent = isError ? 'Error' : 'Event';
+        headerLine.appendChild(statusSpan);
+
+        summaryEl.appendChild(headerLine);
+
+        // If it's an error, list each error code/message
+        if (isError && e.event.metrics?.statusSummary?.errors) {
+          e.event.metrics.statusSummary.errors.forEach(err => {
+            const errLine = document.createElement('div');
+            errLine.className = 'text-gray-200 text-xs mt-1';
+            errLine.textContent = `${err.code}: ${err.message}`;
+            summaryEl.appendChild(errLine);
+          });
+        }
+
+        detailsEl.appendChild(summaryEl);
+
+        // Full JSON payload in the expanded panel
+        const pre = document.createElement('pre');
+        pre.className = 'text-xs whitespace-pre-wrap p-2 text-gray-200 border-t border-gray-700';
+        pre.textContent = JSON.stringify(e.event, null, 2);
+        detailsEl.appendChild(pre);
+
+        return detailsEl;
       };
 
+      // --- Fetch & Render Loop ---
       async function fetchEvents() {
         try {
           const res = await fetch('/api/events');
-          if (!res.ok) {
-            throw new Error(`HTTP error! status: ${res.status}`);
-          }
+          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
           const data = await res.json();
 
           const perHourEvents = Array(24).fill(0);
           const perHourErrors = Array(24).fill(0);
           const nowTime = Date.now();
           let recentActivity = false;
-
-          // Process data for chart and find new logs
           const newLogs = [];
+
           data.forEach(e => {
-            // Assume events have a unique 'id' field. If not, another unique property can be used.
-            const eventId = e.id || e.timestamp; // Use timestamp as a fallback unique ID
-            
+            const eventId = e.id || e.timestamp;
             const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
             if (hourDiff < 24) {
-              const index = 23 - hourDiff;
-              if (e.isError) {
-                perHourErrors[index]++;
-              } else {
-                perHourEvents[index]++;
-              }
-
-              // OPTIMIZATION: Only create and add elements for new, unseen logs.
+              const idx = 23 - hourDiff;
+              e.isError ? perHourErrors[idx]++ : perHourEvents[idx]++;
               if (!displayedEventIds.has(eventId)) {
-                  newLogs.push(e);
-                  displayedEventIds.add(eventId);
+                newLogs.push(e);
+                displayedEventIds.add(eventId);
               }
             }
-            if (nowTime - e.timestamp < 2 * 60 * 1000) {
-              recentActivity = true;
-            }
+            if (nowTime - e.timestamp < 2 * 60 * 1000) recentActivity = true;
           });
-          
-          // --- Update UI ---
 
-          // OPTIMIZATION: Prepend only new log entries instead of rebuilding the whole list.
-          // Reverse so the newest appears at the very top.
           newLogs.reverse().forEach(logData => {
-            const logElement = createLogElement(logData);
-            logContainer.prepend(logElement);
+            logContainer.prepend(createLogElement(logData));
           });
-          
-          // Limit the number of log entries to prevent high memory usage
-          while (logContainer.children.length > 200) { // Keep max 200 logs
-              logContainer.removeChild(logContainer.lastChild);
+
+          // Keep max 200 logs
+          while (logContainer.children.length > 200) {
+            logContainer.removeChild(logContainer.lastChild);
           }
 
           chart.data.datasets[0].data = perHourEvents;
           chart.data.datasets[1].data = perHourErrors;
-          chart.update('none'); // 'none' for no animation, making updates smoother
+          chart.update('none');
 
           updateStatusBadge(recentActivity ? 'live' : 'disconnected');
-
         } catch (error) {
-          // IMPROVEMENT: Log the actual error to the console for easier debugging.
           console.error("Failed to fetch or process events:", error);
           updateStatusBadge('disconnected');
         }
       }
 
-      // Initial call and interval setup
       fetchEvents();
       setInterval(fetchEvents, 5000);
     });
   </script>
-  
-  <!-- Simple CSS animation for new log entries -->
+
+  <!-- CSS animation + accordion arrows -->
   <style>
     @keyframes fade-in {
       from { opacity: 0; transform: translateY(-10px); }
@@ -255,6 +252,28 @@
     }
     .animate-fade-in {
       animation: fade-in 0.5s ease-out forwards;
+    }
+
+    /* Custom accordion arrows */
+    details summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 0.5rem;
+    }
+    details summary::-webkit-details-marker,
+    details summary::marker {
+      display: none;
+    }
+    details summary::before {
+      content: '▶';
+      display: inline-block;
+      width: 1em;
+      margin-right: 0.5em;
+      transform: rotate(0deg);
+      transition: transform 0.2s ease;
+    }
+    details[open] summary::before {
+      content: '▼';
     }
   </style>
 </body>
