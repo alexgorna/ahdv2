@@ -600,7 +600,16 @@
           if (latestErrorEvent) {
             updateTeamsMock(latestErrorEvent);
           } else {
-            teamsMockContent.innerHTML = '<p class="absolute top-2 right-2 text-teams-meta-text text-xs" id="teamsMessageTime"></p><p class="mb-2">No error yet to display in Teams mock.</p>';
+            teamsMockContent.innerHTML = `
+              <div class="flex justify-end items-start mb-2">
+                <div class="max-w-[80%] flex items-end space-x-2">
+                  <div class="bg-teams-chat-bg rounded-lg text-teams-text hover:bg-teams-bubble-hover transition-colors duration-200" style="font-size: 12px; padding: 12px;">
+                    <p class="mb-2">No error yet to display in Teams mock.</p>
+                  </div>
+                  <span class="text-teams-meta-text self-end pb-1" style="font-size: 10px;"></span>
+                </div>
+              </div>
+            `;
             latestErrorMessage = '';
           }
 
