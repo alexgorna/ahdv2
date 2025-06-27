@@ -371,27 +371,26 @@
             if (hourDiff < 24) {
               const index = 23 - hourDiff;
 
-              // Determine if it's an error:
-              // 1. First, trust the backend's e.isError flag if present.
-              // 2. Fallback: Check if the raw stringified actualEventPayload contains "error" or "failed".
-              // 3. Fallback: Check if the metrics.statusSummary.status of actualEventPayload is 'failed' or 'partialSuccess'.
-              let isErrorEvent = e.isError === true; // Backend's flag is primary
+              // --- Refined isError Determination ---
+              let isEventActuallyAnError = false;
 
-              if (!isErrorEvent) { // If backend didn't mark it, try our own checks on actualEventPayload
-                  const rawEventString = JSON.stringify(actualEventPayload).toLowerCase();
-                  if (rawEventString.includes('error') || rawEventString.includes('failed')) {
-                      isErrorEvent = true;
-                  }
+              // Priority 1: Trust backend's e.isError flag if present and true
+              if (e.isError === true) {
+                  isEventActuallyAnError = true;
               }
 
-              if (!isErrorEvent) { // Final check based on status from actualEventPayload
+              // Priority 2: Check metrics.statusSummary.status only if not already classified by backend
+              if (!isEventActuallyAnError) {
                   const status = getNestedProperty(actualEventPayload, 'metrics.statusSummary.status');
                   if (status === 'failed' || status === 'partialSuccess') {
-                      isErrorEvent = true;
+                      isEventActuallyAnError = true;
                   }
               }
               
-              e.isError = isErrorEvent; // Assign the determined flag back to the original 'e' object
+              // We explicitly DO NOT use the raw string includes 'error' or 'failed' here
+              // as it causes false positives for non-error messages.
+              
+              e.isError = isEventActuallyAnError; // Assign the determined flag back to the original 'e' object
 
               if (e.isError) {
                 perHourErrors[index]++;
