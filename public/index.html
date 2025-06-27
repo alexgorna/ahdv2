@@ -551,11 +551,20 @@
             }
           });
           
-          // No need to reverse newLogs here as it's already sorted and prepend will put them in correct order
           newLogs.forEach(logData => {
             const logElement = createLogElement(logData);
+            logElement.dataset.timestamp = logData.timestamp;
             logContainer.prepend(logElement);
           });
+
+          // Sort all log entries by timestamp (newest first) to handle out-of-order arrivals
+          if (logContainer.children.length > 1) {
+            const sortedLogs = Array.from(logContainer.children).sort((a, b) => 
+              parseInt(b.dataset.timestamp) - parseInt(a.dataset.timestamp)
+            );
+            logContainer.innerHTML = '';
+            sortedLogs.forEach(log => logContainer.appendChild(log));
+          }
           
           while (logContainer.children.length > MAX_LOGS) { 
               // To accurately remove from displayedEventIds set, we need the eventIdForTracking of the removed element.
@@ -569,7 +578,7 @@
           
           // Update log count display: "Event Logs (X/Last)" if at MAX_LOGS
           const currentLogCount = logContainer.children.length;
-          logCountEl.textContent = `(${currentLogCount}${currentLogCount === MAX_LOGS ? '/Last' : ''})`;
+          logCountEl.textContent = `(${currentLogCount === MAX_LOGS ? 'Last ' : ''}${currentLogCount})`;
 
 
           chart.data.datasets[0].data = perHourEvents;
