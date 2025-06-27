@@ -19,7 +19,7 @@
             'log-event-border': '#3B82F6', // Blue for the left border (Tailwind blue-500)
             'header-bg': '#1A202C', // Dark background for headers and modal
             'teams-bg': '#1F1F1F', // Dark background for Teams mock
-            'teams-chat-bg': '#2D2D30', // Chat bubble background
+            'teams-chat-bg': '#6264A7', // Chat bubble background
             'teams-bubble-hover': '#6264A7', // Bubble hover/selected accent
             'teams-text': '#E1E1E1', // Light text for Teams mock
             'teams-meta-text': '#CCCCCC', // Lighter text for time/meta
@@ -349,19 +349,20 @@
         latestErrorMessage = teamsMessageText; // Store for copy button
 
         teamsMockContent.innerHTML = `
-          <div class="flex justify-end items-start mb-2">
-            <div class="max-w-[80%] flex items-end space-x-2">
+          <div class="flex justify-end mb-2">
+            <div class="max-w-[80%]">
+              <div class="text-right mb-1">
+                <span class="text-teams-meta-text" style="font-size: 10px;">${formattedTime}</span>
+              </div>
               <div class="bg-teams-chat-bg rounded-lg text-teams-text hover:bg-teams-bubble-hover transition-colors duration-200" style="font-size: 12px; padding: 12px;">
                 <p class="mb-2" style="font-weight: 600;">Alert Name: "${alertName}"</p>
                 <p class="mb-2">Sandbox: <span style="background-color: rgba(98, 100, 167, 0.2); padding: 2px 6px; border-radius: 4px; font-size: 11px;">${sandboxName}</span></p>
                 <p style="font-weight: 600; margin-bottom: 8px;">ERRORS:</p>
                 <pre style="font-family: 'Segoe UI', monospace; font-size: 11px; line-height: 1.4; white-space: pre-wrap; margin: 0;">${errorMessagesHtml}</pre>
               </div>
-              <span class="text-teams-meta-text self-end pb-1" style="font-size: 10px;">${formattedTime}</span>
             </div>
           </div>
         `;
-      };
 
 
       /**
@@ -601,12 +602,11 @@
             updateTeamsMock(latestErrorEvent);
           } else {
             teamsMockContent.innerHTML = `
-              <div class="flex justify-end items-start mb-2">
-                <div class="max-w-[80%] flex items-end space-x-2">
+              <div class="flex justify-end mb-2">
+                <div class="max-w-[80%]">
                   <div class="bg-teams-chat-bg rounded-lg text-teams-text hover:bg-teams-bubble-hover transition-colors duration-200" style="font-size: 12px; padding: 12px;">
                     <p class="mb-2">No error yet to display in Teams mock.</p>
                   </div>
-                  <span class="text-teams-meta-text self-end pb-1" style="font-size: 10px;"></span>
                 </div>
               </div>
             `;
