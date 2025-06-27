@@ -30,7 +30,8 @@ app.get('/webhook', (req, res) => {
 
 app.post('/webhook', (req, res) => {
   const timestamp = Date.now();
-  events.push({ timestamp, event: req.body });
+  const hasError = JSON.stringify(req.body).toLowerCase().includes('error');
+  events.push({ timestamp, event: req.body, isError: hasError });
   pruneOldEvents();
   res.sendStatus(200);
 });
