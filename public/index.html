@@ -335,7 +335,9 @@
         }).format(dt);
 
         const alertName = getNestedProperty(actualEventPayload, 'alertName') || 'N/A';
-        const sandboxName = getNestedProperty(actualEventPayload, 'sandboxName') || 'N/A';
+        const sandboxName = getNestedProperty(actualEventPayload, 'sandboxName') || 
+                    getNestedProperty(errorEvent.event, 'event.sandboxName') || 
+                    'N/A';
         const extractedMessages = extractErrorMessages(actualEventPayload);
 
         let errorMessagesHtml = '';
@@ -419,7 +421,9 @@
           // Get event_id for display: Prioritize actualEventPayload.event_id, then actualEventPayload.id, then 'N/A'
           const eventIdForDisplay = getNestedProperty(actualEventPayload, 'event_id') || getNestedProperty(actualEventPayload, 'id') || 'N/A';
           // Get sandboxName for display
-          const sandboxNameForDisplay = getNestedProperty(actualEventPayload, 'sandboxName') || 'N/A';
+          const sandboxNameForDisplay = getNestedProperty(actualEventPayload, 'sandboxName') || 
+                               getNestedProperty(e.event, 'event.sandboxName') || 
+                               'N/A';
 
 
           logEntry.innerHTML = `
