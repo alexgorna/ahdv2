@@ -11,7 +11,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '../');
 
 let events = [];
-let lastChallengeRequest = null;
 
 const pruneOldEvents = () => {
   const now = Date.now();
@@ -20,18 +19,12 @@ const pruneOldEvents = () => {
 
 app.use(cors());
 app.use(bodyParser.json());
+
 app.use(express.static(path.join(root, 'public')));
 
 app.get('/webhook', (req, res) => {
   const { challenge } = req.query;
-  if (challenge) {
-    lastChallengeRequest = {
-      timestamp: new Date().toISOString(),
-      query: req.query,
-      headers: req.headers
-    };
-    return res.send(challenge);
-  }
+  if (challenge) return res.send(challenge);
   res.sendStatus(400);
 });
 
@@ -46,10 +39,6 @@ app.post('/webhook', (req, res) => {
 app.get('/api/events', (req, res) => {
   pruneOldEvents();
   res.json(events);
-});
-
-app.get('/api/challenge-info', (req, res) => {
-  res.json(lastChallengeRequest || {});
 });
 
 app.listen(port, () => console.log(`Server listening on port ${port}`));

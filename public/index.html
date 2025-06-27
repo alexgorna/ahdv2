@@ -21,7 +21,7 @@
 
     <!-- Webhook URL Modal (Initially Hidden) -->
     <div id="modal" class="hidden bg-gray-800 border border-gray-700 p-4 rounded-lg mb-4">
-        <div id="challengeInfo" class="mt-4 text-xs text-gray-200 whitespace-pre-wrap"></div>
+      <div id="challengeInfo" class="mt-4 text-xs text-gray-200 whitespace-pre-wrap"></div>
       <p class="mb-2 font-semibold">Webhook URL:</p>
       <div class="flex items-center space-x-2">
         <code id="webhookUrl" class="text-blue-400 break-all bg-gray-900 p-2 rounded-md"></code>
@@ -45,6 +45,7 @@
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       // --- Element Caching ---
+      // Cache DOM elements on startup to avoid repeated lookups.
       const modal = document.getElementById('modal');
       const gearBtn = document.getElementById('gearBtn');
       const webhookUrlEl = document.getElementById('webhookUrl');
@@ -53,32 +54,38 @@
       const statusBadge = document.getElementById('statusBadge');
       const logContainer = document.getElementById('logContainer');
       const chartCanvas = document.getElementById('barChart');
+      
+      // Keep track of displayed event IDs to prevent duplicates
       const displayedEventIds = new Set();
 
-      // Set webhook URL
+      // --- Initial Setup ---
       webhookUrlEl.textContent = window.location.origin + "/webhook";
 
+      // --- Event Listeners ---
       async function fetchChallengeInfo() {
-        try {
-          const res = await fetch('/api/challenge-info');
-          const data = await res.json();
-          if (!data || !data.headers) return;
-          const challengeDetails = document.getElementById('challengeInfo');
-          challengeDetails.innerHTML = `\nReceived @ ${data.timestamp || ''}\n<pre class='bg-gray-900 text-gray-300 p-2 rounded overflow-x-auto max-h-64'>${JSON.stringify(data, null, 2)}</pre>`;
-        } catch (err) {
-          console.warn("Challenge info not available yet.");
-        }
-      }
+  try {
+    const res = await fetch('/api/challenge-info');
+    const data = await res.json();
+    if (!data || !data.headers) return;
+    const challengeDetails = document.getElementById('challengeInfo');
+    challengeDetails.innerHTML = `
+Received @ ${data.timestamp || ''}
+<pre class='bg-gray-900 text-gray-300 p-2 rounded overflow-x-auto max-h-64'>${JSON.stringify(data, null, 2)}</pre>`;
+  } catch (err) {
+    console.warn("Challenge info not available yet.");
+  }
+}
+gearBtn.addEventListener('click', () => {
+  modal.classList.toggle('hidden');
+  copyStatus.classList.add('hidden');
+  fetchChallengeInfo();
 
-      // Toggle modal on gear click and fetch challenge info every time
-      gearBtn.addEventListener('click', () => {
-        copyStatus.classList.add('hidden');
-        fetchChallengeInfo();
         modal.classList.toggle('hidden');
+        copyStatus.classList.add('hidden'); // Hide status on toggle
       });
 
-      // Copy webhook URL to clipboard
       copyBtn.addEventListener('click', () => {
+        // Use a more robust copy method that works well in iframes.
         const textToCopy = webhookUrlEl.textContent;
         const textArea = document.createElement('textarea');
         textArea.value = textToCopy;
@@ -90,50 +97,183 @@
           setTimeout(() => copyStatus.classList.add('hidden'), 2000);
         } catch (err) {
           console.error('Failed to copy text: ', err);
+          // Optionally, display an error message to the user here.
         }
         document.body.removeChild(textArea);
       });
 
-      // Chart.js setup and event log handling (unchanged)
+      // --- Chart.js Initialization ---
       const ctx = chartCanvas.getContext('2d');
-      const barChart = new Chart(ctx, {
+      const chart = new Chart(ctx, {
         type: 'bar',
-        data: { labels: [], datasets: [{ label: 'Events', backgroundColor: '#3b82f6', data: [] }, { label: 'Errors', backgroundColor: '#ef4444', data: [] }] },
-        options: { animation: false, scales: { x: { stacked: true }, y: { beginAtZero: true, stacked: true } } }
+        data: {
+          // Dynamically generate labels for the last 24 hours
+          labels: Array.from({ length: 24 }, (_, i) => {
+            const date = new Date();
+            date.setHours(date.getHours() - (23 - i));
+            return `${date.getHours()}:00`;
+          }),
+          datasets: [
+            {
+              label: 'Events',
+              data: Array(24).fill(0),
+              backgroundColor: 'rgba(59, 130, 246, 0.7)',
+              borderColor: 'rgb(59, 130, 246)',
+              borderWidth: 1,
+            },
+            {
+              label: 'Errors',
+              data: Array(24).fill(0),
+              backgroundColor: 'rgba(239, 68, 68, 0.7)',
+              borderColor: 'rgb(239, 68, 68)',
+              borderWidth: 1,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { 
+              beginAtZero: true,
+              ticks: { color: '#9CA3AF' },
+              grid: { color: 'rgba(255, 255, 255, 0.1)' }
+            },
+            x: {
+              ticks: { color: '#9CA3AF' },
+              grid: { display: false }
+            }
+          },
+          plugins: {
+            legend: {
+              labels: { color: '#E5E7EB' }
+            }
+          }
+        }
       });
 
-      // SSE: Events
-      const eventsSource = new EventSource('/api/events');
-      eventsSource.addEventListener('open', () => statusBadge.textContent = 'Connected');
-      eventsSource.addEventListener('error', () => statusBadge.textContent = 'Disconnected');
-      eventsSource.addEventListener('message', e => {
-        const msg = JSON.parse(e.data);
-        // Update chart
-        const hour = new Date(msg.timestamp).getHours();
-        const hourStr = `${hour}:00`;
-        if (!barChart.data.labels.includes(hourStr)) {
-          barChart.data.labels.push(hourStr);
-          barChart.data.labels.sort((a, b) => parseInt(a) - parseInt(b));
+      // --- Data Fetching and UI Update Logic ---
+      
+      /**
+       * Updates the status badge with the given text and style.
+       * @param {('live'|'disconnected')} state - The current connection state.
+       */
+      const updateStatusBadge = (state) => {
+        if (state === 'live') {
+          statusBadge.textContent = 'Live';
+          statusBadge.className = 'bg-green-600 text-xs px-2 py-1 rounded-md transition-colors duration-300';
+        } else {
+          statusBadge.textContent = 'Disconnected';
+          statusBadge.className = 'bg-red-600 text-xs px-2 py-1 rounded-md transition-colors duration-300';
         }
-        const idx = barChart.data.labels.indexOf(hourStr);
-        barChart.data.datasets[msg.type === 'error' ? 1 : 0].data[idx] = (barChart.data.datasets[msg.type === 'error' ? 1 : 0].data[idx] || 0) + 1;
-        barChart.update();
+      };
+      
+      /**
+       * Creates a DOM element for a log entry.
+       * @param {object} e - The event object from the API.
+       * @returns {HTMLDivElement} - The created DOM element.
+       */
+      const createLogElement = (e) => {
+          const dt = new Date(e.timestamp);
+          const isError = e.isError;
 
-        // Log events
-        if (!displayedEventIds.has(msg.id)) {
-          displayedEventIds.add(msg.id);
-          const entry = document.createElement('div');
-          entry.className = 'flex justify-between items-center p-2 bg-gray-700 rounded animate-fade-in';
-          entry.innerHTML = `<span>${new Date(msg.timestamp).toLocaleString()}</span><span class='px-2 text-xs font-semibold rounded ${msg.type === 'error' ? 'bg-red-500' : 'bg-green-500'}'>${msg.type === 'error' ? 'Error' : 'Event'}</span>`;
-          logContainer.prepend(entry);
-          if (logContainer.children.length > 100) logContainer.removeChild(logContainer.lastChild);
+          const logEntry = document.createElement('div');
+          logEntry.className = 'p-2 border border-gray-700 rounded-lg bg-gray-900 animate-fade-in';
+          
+          const statusColor = isError ? 'bg-red-600' : 'bg-green-600';
+          const statusText = isError ? 'Error' : 'Event';
+          
+          logEntry.innerHTML = `
+            <div class="flex justify-between items-center text-sm">
+              <span class="text-gray-400">${dt.toLocaleString()}</span>
+              <span class="px-2 py-0.5 text-xs rounded-md ${statusColor}">${statusText}</span>
+            </div>
+            <pre class="text-xs whitespace-pre-wrap mt-1 text-gray-200">${JSON.stringify(e.event, null, 2)}</pre>
+          `;
+          return logEntry;
+      };
+
+      async function fetchEvents() {
+        try {
+          const res = await fetch('/api/events');
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+          }
+          const data = await res.json();
+
+          const perHourEvents = Array(24).fill(0);
+          const perHourErrors = Array(24).fill(0);
+          const nowTime = Date.now();
+          let recentActivity = false;
+
+          // Process data for chart and find new logs
+          const newLogs = [];
+          data.forEach(e => {
+            // Assume events have a unique 'id' field. If not, another unique property can be used.
+            const eventId = e.id || e.timestamp; // Use timestamp as a fallback unique ID
+            
+            const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
+            if (hourDiff < 24) {
+              const index = 23 - hourDiff;
+              if (e.isError) {
+                perHourErrors[index]++;
+              } else {
+                perHourEvents[index]++;
+              }
+
+              // OPTIMIZATION: Only create and add elements for new, unseen logs.
+              if (!displayedEventIds.has(eventId)) {
+                  newLogs.push(e);
+                  displayedEventIds.add(eventId);
+              }
+            }
+            if (nowTime - e.timestamp < 2 * 60 * 1000) {
+              recentActivity = true;
+            }
+          });
+          
+          // --- Update UI ---
+
+          // OPTIMIZATION: Prepend only new log entries instead of rebuilding the whole list.
+          // Reverse so the newest appears at the very top.
+          newLogs.reverse().forEach(logData => {
+            const logElement = createLogElement(logData);
+            logContainer.prepend(logElement);
+          });
+          
+          // Limit the number of log entries to prevent high memory usage
+          while (logContainer.children.length > 200) { // Keep max 200 logs
+              logContainer.removeChild(logContainer.lastChild);
+          }
+
+          chart.data.datasets[0].data = perHourEvents;
+          chart.data.datasets[1].data = perHourErrors;
+          chart.update('none'); // 'none' for no animation, making updates smoother
+
+          updateStatusBadge(recentActivity ? 'live' : 'disconnected');
+
+        } catch (error) {
+          // IMPROVEMENT: Log the actual error to the console for easier debugging.
+          console.error("Failed to fetch or process events:", error);
+          updateStatusBadge('disconnected');
         }
-      });
+      }
+
+      // Initial call and interval setup
+      fetchEvents();
+      setInterval(fetchEvents, 5000);
     });
   </script>
+  
+  <!-- Simple CSS animation for new log entries -->
   <style>
-    @keyframes fade-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-    .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+      animation: fade-in 0.5s ease-out forwards;
+    }
   </style>
 </body>
 </html>
