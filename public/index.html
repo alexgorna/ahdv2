@@ -230,6 +230,7 @@
 
         // primary message
         const messages = collectAllMessages(e.event);
+        alert(messages.join('\n') || '⛔ no messages found');
         const primary = document.createElement('div');
         primary.className = 'font-medium text-white';
         primary.textContent = messages.shift() || '(no message)';
