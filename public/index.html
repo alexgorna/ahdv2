@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!-- Added viewport meta tag for proper responsive scaling on all devices -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AEP Health Monitoring – Last 24 Hours</title>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -10,31 +9,38 @@
 </head>
 <body class="bg-gray-900 text-white font-sans">
   <div class="max-w-6xl mx-auto p-4">
-    <!-- Header Section -->
+    <!-- Header -->
     <div class="flex justify-between items-center mb-4">
-      <h1 class="text-3xl font-bold">AEP Health Monitoring <span class="text-sm font-normal text-gray-400">– Last 24 Hours</span></h1>
+      <h1 class="text-3xl font-bold">
+        AEP Health Monitoring
+        <span class="text-sm font-normal text-gray-400">– Last 24 Hours</span>
+      </h1>
       <div class="flex items-center space-x-2">
-        <span id="statusBadge" class="bg-red-600 text-xs px-2 py-1 rounded-md transition-colors duration-300">Disconnected</span>
+        <span id="statusBadge" class="bg-red-600 text-xs px-2 py-1 rounded-md transition-colors duration-300">
+          Disconnected
+        </span>
         <button id="gearBtn" class="text-white text-xl focus:outline-none hover:text-gray-300">⚙️</button>
       </div>
     </div>
 
-    <!-- Webhook URL Modal (Initially Hidden) -->
+    <!-- Webhook Modal -->
     <div id="modal" class="hidden bg-gray-800 border border-gray-700 p-4 rounded-lg mb-4">
       <p class="mb-2 font-semibold">Webhook URL:</p>
       <div class="flex items-center space-x-2">
         <code id="webhookUrl" class="text-blue-400 break-all bg-gray-900 p-2 rounded-md"></code>
-        <button id="copyBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-md font-semibold">Copy</button>
+        <button id="copyBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-md font-semibold">
+          Copy
+        </button>
         <span id="copyStatus" class="text-green-400 text-xs hidden">Copied!</span>
       </div>
     </div>
 
-    <!-- Chart Section -->
+    <!-- Chart -->
     <div class="bg-gray-800 p-4 rounded-lg shadow mb-6">
       <canvas id="barChart" height="100"></canvas>
     </div>
 
-    <!-- Event Logs Section -->
+    <!-- Event Logs -->
     <div class="bg-gray-800 p-4 rounded-lg shadow">
       <h2 class="text-lg font-semibold mb-2">Event Logs</h2>
       <div id="logContainer" class="max-h-96 overflow-y-auto space-y-2"></div>
@@ -43,21 +49,18 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      // --- Element Caching ---
-      const modal = document.getElementById('modal');
-      const gearBtn = document.getElementById('gearBtn');
-      const webhookUrlEl = document.getElementById('webhookUrl');
-      const copyBtn = document.getElementById('copyBtn');
-      const copyStatus = document.getElementById('copyStatus');
-      const statusBadge = document.getElementById('statusBadge');
-      const logContainer = document.getElementById('logContainer');
-      const chartCanvas = document.getElementById('barChart');
+      const modal           = document.getElementById('modal');
+      const gearBtn         = document.getElementById('gearBtn');
+      const webhookUrlEl    = document.getElementById('webhookUrl');
+      const copyBtn         = document.getElementById('copyBtn');
+      const copyStatus      = document.getElementById('copyStatus');
+      const statusBadge     = document.getElementById('statusBadge');
+      const logContainer    = document.getElementById('logContainer');
+      const chartCanvas     = document.getElementById('barChart');
       const displayedEventIds = new Set();
 
-      // --- Initial Setup ---
       webhookUrlEl.textContent = window.location.origin + "/webhook";
 
-      // --- Event Listeners ---
       gearBtn.addEventListener('click', () => {
         modal.classList.toggle('hidden');
         copyStatus.classList.add('hidden');
@@ -65,21 +68,21 @@
 
       copyBtn.addEventListener('click', () => {
         const textToCopy = webhookUrlEl.textContent;
-        const textArea = document.createElement('textarea');
-        textArea.value = textToCopy;
-        document.body.appendChild(textArea);
-        textArea.select();
+        const ta = document.createElement('textarea');
+        ta.value = textToCopy;
+        document.body.appendChild(ta);
+        ta.select();
         try {
           document.execCommand('copy');
           copyStatus.classList.remove('hidden');
           setTimeout(() => copyStatus.classList.add('hidden'), 2000);
         } catch (err) {
-          console.error('Failed to copy text: ', err);
+          console.error('Copy failed', err);
         }
-        document.body.removeChild(textArea);
+        document.body.removeChild(ta);
       });
 
-      // --- Chart.js Initialization ---
+      // Chart.js
       const ctx = chartCanvas.getContext('2d');
       const chart = new Chart(ctx, {
         type: 'bar',
@@ -110,7 +113,7 @@
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            y: { 
+            y: {
               beginAtZero: true,
               ticks: { color: '#9CA3AF' },
               grid: { color: 'rgba(255, 255, 255, 0.1)' }
@@ -121,16 +124,11 @@
             }
           },
           plugins: {
-            legend: {
-              labels: { color: '#E5E7EB' }
-            }
+            legend: { labels: { color: '#E5E7EB' } }
           }
         }
       });
 
-      /**
-       * Updates the status badge with the given text and style.
-       */
       const updateStatusBadge = (state) => {
         if (state === 'live') {
           statusBadge.textContent = 'Live';
@@ -141,25 +139,20 @@
         }
       };
 
-      /**
-       * Creates a collapsible log entry where:
-       * – the <summary> gets a red or blue background
-       * – the error message(s) are listed directly under the timestamp
-       */
       const createLogElement = (e) => {
-        const dt = new Date(e.timestamp);
+        const dt      = new Date(e.timestamp);
         const isError = e.isError;
 
-        // Outer <details>
+        // details wrapper
         const detailsEl = document.createElement('details');
         detailsEl.className = 'border border-gray-700 rounded-lg bg-gray-900 animate-fade-in';
 
-        // The colored header
+        // summary = full-width colored header
         const summaryEl = document.createElement('summary');
         const bgClass   = isError ? 'bg-red-700' : 'bg-blue-700';
-        summaryEl.className = `flex flex-col p-2 rounded-md ${bgClass} cursor-pointer`;
+        summaryEl.className = `w-full flex flex-col p-2 ${bgClass} rounded-t-lg cursor-pointer`;
 
-        // First row: timestamp + badge
+        // row: timestamp + badge
         const row = document.createElement('div');
         row.className = 'flex justify-between items-center text-sm text-white';
         const timeSpan = document.createElement('span');
@@ -171,19 +164,26 @@
         row.appendChild(badge);
         summaryEl.appendChild(row);
 
-        // If error, list each message underneath
-        if (isError && e.event.metrics?.statusSummary?.errors) {
-          e.event.metrics.statusSummary.errors.forEach(err => {
-            const msg = document.createElement('div');
-            msg.className = 'text-xs text-white mt-1';
-            msg.textContent = err.message;
-            summaryEl.appendChild(msg);
-          });
+        // error messages: check metrics.statusSummary.errors first
+        let messages = [];
+        if (e.event.metrics?.statusSummary?.errors?.length) {
+          messages = e.event.metrics.statusSummary.errors.map(x => x.message);
         }
+        // fallback to recordSummary.failedInfo
+        else if (e.event.metrics?.recordSummary?.failedInfo?.length) {
+          messages = e.event.metrics.recordSummary.failedInfo.map(x => x.message);
+        }
+        // render each
+        messages.forEach(msg => {
+          const div = document.createElement('div');
+          div.className = 'text-xs text-white mt-1';
+          div.textContent = msg;
+          summaryEl.appendChild(div);
+        });
 
         detailsEl.appendChild(summaryEl);
 
-        // Expanded JSON
+        // expanded JSON
         const pre = document.createElement('pre');
         pre.className = 'text-xs whitespace-pre-wrap p-2 text-gray-200 border-t border-gray-700';
         pre.textContent = JSON.stringify(e.event, null, 2);
@@ -192,48 +192,44 @@
         return detailsEl;
       };
 
-      // --- Fetch & Render Loop ---
       async function fetchEvents() {
         try {
           const res  = await fetch('/api/events');
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
 
-          const perHourE = Array(24).fill(0);
-          const perHourX = Array(24).fill(0);
-          const now      = Date.now();
-          let recentAct = false;
-          const newLogs  = [];
+          const perE = Array(24).fill(0);
+          const perX = Array(24).fill(0);
+          const now  = Date.now();
+          let live  = false;
+          const newLogs = [];
 
           data.forEach(e => {
-            const id = e.id || e.timestamp;
-            const diffH = Math.floor((now - e.timestamp) / 3600000);
-            if (diffH < 24) {
-              const idx = 23 - diffH;
-              e.isError ? perHourX[idx]++ : perHourE[idx]++;
+            const id   = e.id || e.timestamp;
+            const diff = Math.floor((now - e.timestamp)/3600000);
+            if (diff < 24) {
+              const i = 23 - diff;
+              e.isError ? perX[i]++ : perE[i]++;
               if (!displayedEventIds.has(id)) {
                 newLogs.push(e);
                 displayedEventIds.add(id);
               }
             }
-            if (now - e.timestamp < 120000) recentAct = true;
+            if (now - e.timestamp < 120000) live = true;
           });
 
-          newLogs.reverse().forEach(log => {
-            logContainer.prepend(createLogElement(log));
-          });
-
+          newLogs.reverse().forEach(e => logContainer.prepend(createLogElement(e)));
           while (logContainer.children.length > 200) {
             logContainer.removeChild(logContainer.lastChild);
           }
 
-          chart.data.datasets[0].data = perHourE;
-          chart.data.datasets[1].data = perHourX;
+          chart.data.datasets[0].data = perE;
+          chart.data.datasets[1].data = perX;
           chart.update('none');
 
-          updateStatusBadge(recentAct ? 'live' : 'disconnected');
+          updateStatusBadge(live ? 'live' : 'disconnected');
         } catch (err) {
-          console.error("Fetch error:", err);
+          console.error('Fetch error:', err);
           updateStatusBadge('disconnected');
         }
       }
@@ -243,12 +239,11 @@
     });
   </script>
 
-  <!-- Just hide the native marker – no ▶ arrows injected -->
+  <!-- hide native marker only -->
   <style>
     details summary::-webkit-details-marker,
-    details summary::marker {
-      display: none;
-    }
+    details summary::marker { display: none; }
+
     @keyframes fade-in {
       from { opacity: 0; transform: translateY(-10px); }
       to   { opacity: 1; transform: translateY(0); }
