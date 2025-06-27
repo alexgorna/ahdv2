@@ -230,7 +230,7 @@
 
         // primary message
         const messages = collectAllMessages(e.event);
-        alert(messages.join('\n') || '⛔ no messages found');
+        console.log("Collected messages for", e.event.id, collectAllMessages(e.event));
         const primary = document.createElement('div');
         primary.className = 'font-medium text-white';
         primary.textContent = messages.shift() || '(no message)';
