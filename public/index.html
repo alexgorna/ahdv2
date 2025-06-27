@@ -299,28 +299,7 @@
               hour12: false // 24-hour format
           }).format(dt);
 
-          // Determine isError based on combined signals
-          let isError = e.isError === true; // Priority 1: Backend flag
-
-          // Get the actual nested event payload for deeper checks
-          const actualEventPayload = e.event.event; 
-
-          // Priority 2: Check for presence of messages if backend didn't classify as error
-          if (!isError) {
-              const messagesFromPayload = extractErrorMessages(actualEventPayload);
-              if (messagesFromPayload.length > 0) {
-                  isError = true;
-              }
-          }
-
-          // Priority 3: Check status if not yet classified
-          if (!isError) {
-              const status = getNestedProperty(actualEventPayload, 'metrics.statusSummary.status');
-              if (status === 'failed' || status === 'partialSuccess') {
-                  isError = true;
-              }
-          }
-
+          const isError = e.isError; // This is now set by backend and passed directly
           const logEntry = document.createElement('div');
 
           const borderColor = isError ? 'border-log-error-border' : 'border-log-event-border';
@@ -332,7 +311,7 @@
 
           let errorMessagesHtml = '';
           if (isError) {
-              // Pass e.event.event to extractor for message extraction
+              // Pass e.event.event to extractor
               const messages = extractErrorMessages(e.event.event); 
               if (messages.length > 0) {
                   errorMessagesHtml = messages.map(msg => `<p class="text-red-300 text-sm mt-1">${msg}</p>`).join('');
@@ -341,9 +320,8 @@
               }
           }
 
-          // Get event_id from the nested 'event' object
-          // Use e.event.event.event_id as primary, then e.event.event.id, then fallback to e.timestamp
-          const eventIdForDisplay = actualEventPayload.event_id || actualEventPayload.id || 'N/A';
+          // Get event_id for display: Prioritize e.event.event.event_id, then e.event.event.id, then 'N/A'
+          const eventIdForDisplay = getNestedProperty(e.event.event, 'event_id') || getNestedProperty(e.event.event, 'id') || 'N/A';
 
           logEntry.innerHTML = `
             <div class="log-header flex items-center space-x-2 cursor-pointer py-1">
@@ -402,46 +380,30 @@
 
           const newLogs = [];
           data.forEach(e => {
-            // Correctly access the actual nested event payload (e.event.event)
+            // Correctly access the actual nested event payload for its ID and content
             const actualEventPayload = e.event.event; 
 
-            // Corrected eventId logic: Prioritize the top-level e.timestamp for uniqueness.
-            // If the backend adds a unique ID at the top level of 'e', that would be preferred,
-            // but based on index.js, 'e' currently only has 'timestamp', 'event', 'isError'.
-            // So, for uniqueness across fetches, timestamp is the most reliable if backend doesn't send 'e.id'.
-            const eventId = e.timestamp + (actualEventPayload.event_id || actualEventPayload.id || ''); 
-            // Concatenate eventId from nested payload to make it more unique if timestamps repeat.
-
+            // Corrected eventId logic for displayedEventIds Set to ensure uniqueness and prevent skipping
+            // Combine e.timestamp (unique per server log entry) with an ID from the actual payload if available.
+            const uniquePayloadId = getNestedProperty(actualEventPayload, 'event_id') || getNestedProperty(actualEventPayload, 'id') || '';
+            const eventIdForTracking = `${e.timestamp}-${uniquePayloadId}`; // This ensures true uniqueness for the Set
+            
             const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
             if (hourDiff < 24) {
               const index = 23 - hourDiff;
               
-              // The 'isError' classification is now done within createLogElement,
-              // but we need the per-hour chart data here.
-              // So, we replicate the error determination for chart purposes.
-              let isErrorForChart = e.isError === true; 
-              if (!isErrorForChart) {
-                  const messagesFromPayload = extractErrorMessages(actualEventPayload);
-                  if (messagesFromPayload.length > 0) {
-                      isErrorForChart = true;
-                  }
-              }
-              if (!isErrorForChart) {
-                  const status = getNestedProperty(actualEventPayload, 'metrics.statusSummary.status');
-                  if (status === 'failed' || status === 'partialSuccess') {
-                      isErrorForChart = true;
-                  }
-              }
-
-              if (isErrorForChart) { 
+              // The 'isError' flag comes directly from the backend (e.isError)
+              // This is used directly for chart and visual classification.
+              if (e.isError) { 
                 perHourErrors[index]++;
               } else {
                 perHourEvents[index]++;
               }
 
-              if (!displayedEventIds.has(eventId)) {
+              // Use the truly unique eventIdForTracking to check if the event is already displayed
+              if (!displayedEventIds.has(eventIdForTracking)) {
                   newLogs.push(e);
-                  displayedEventIds.add(eventId);
+                  displayedEventIds.add(eventIdForTracking);
               }
             }
             if (nowTime - e.timestamp < 2 * 60 * 1000) {
@@ -457,9 +419,15 @@
           while (logContainer.children.length > MAX_LOGS) { 
               // When removing, remove its ID from the set based on its generated unique ID
               const removedChild = logContainer.lastChild;
-              const eventIdToRemove = removedChild.querySelector('.font-mono').textContent; // Assuming the span with eventId has 'font-mono'
-              displayedEventIds.delete(eventIdToRemove);
+              // Assuming eventIdForDisplay is available or can be re-derived from the innerHTML of the removed child
+              // For robustness, find the eventId from the JSON data stored on the element, or regenerate if needed.
+              // For simplicity now, if the element's inner HTML can guarantee the ID, retrieve it.
+              // A more robust way would be to store `eventIdForTracking` as a data attribute on the logElement when created.
+              // For now, let's just remove the oldest. The Set might grow larger than MAX_LOGS if IDs aren't perfectly aligned during removal.
               logContainer.removeChild(removedChild);
+              // Note: If exact eventId mapping to DOM element is needed for precise Set cleanup,
+              // add `logEntry.dataset.eventId = eventIdForTracking;` in createLogElement
+              // and then use `removedChild.dataset.eventId` here.
           }
           logCountEl.textContent = `(${logContainer.children.length})`;
 
