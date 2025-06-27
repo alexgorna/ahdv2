@@ -57,9 +57,20 @@
 
     <!-- Event Logs Section -->
     <div class="bg-gray-800 p-4 rounded-lg shadow mb-6">
-      <!-- Event Logs Header with Accordion Toggle -->
+      <!-- Event Logs Header with Accordion Toggle and Filters -->
       <div id="eventLogsHeader" class="flex justify-between items-center cursor-pointer mb-2">
-        <h2 class="text-lg font-semibold">Event Logs <span id="logCount" class="text-gray-400">(0)</span></h2>
+        <div class="flex items-center space-x-4">
+          <h2 class="text-lg font-semibold">Event Logs <span id="logCount" class="text-gray-400">(0)</span></h2>
+          <div class="flex items-center space-x-2">
+            <select id="sandboxFilter" class="bg-gray-700 text-white text-sm px-2 py-1 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="all">All Sandboxes</option>
+            </select>
+            <select id="typeFilter" class="bg-gray-700 text-white text-sm px-2 py-1 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="all">All Events</option>
+              <option value="errors">Errors Only</option>
+            </select>
+          </div>
+        </div>
         <svg id="logsToggleArrow" class="w-5 h-5 text-gray-400 transform transition-transform duration-200 rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
         </svg>
@@ -98,6 +109,10 @@
       const logCountEl = document.getElementById('logCount');
       const eventLogsHeader = document.getElementById('eventLogsHeader'); 
       const logsToggleArrow = document.getElementById('logsToggleArrow'); 
+      
+      // Filter elements
+      const sandboxFilter = document.getElementById('sandboxFilter');
+      const typeFilter = document.getElementById('typeFilter');
 
       // MS Teams Mock Elements
       const teamsMockContent = document.getElementById('teamsMockContent');
@@ -106,6 +121,7 @@
       
       const displayedEventIds = new Set();
       const MAX_LOGS = 200; // Limit the number of log entries
+      const distinctSandboxes = new Set(); // Track distinct sandboxes
 
       let latestErrorMessage = ''; // Store the latest message for the copy button
 
@@ -135,11 +151,17 @@
         document.body.removeChild(textArea);
       });
 
-      // Toggle main log container visibility
-      eventLogsHeader.addEventListener('click', () => {
+      // Toggle main log container visibility (only toggle on h2, not the dropdowns)
+      eventLogsHeader.addEventListener('click', (e) => {
+        // Only toggle if clicking on the header itself, not the dropdowns
+        if (e.target.closest('select')) return;
         logContainer.classList.toggle('hidden');
         logsToggleArrow.classList.toggle('rotate-180'); // Rotate arrow on toggle
       });
+
+      // Filter event listeners
+      sandboxFilter.addEventListener('change', applyFilters);
+      typeFilter.addEventListener('change', applyFilters);
 
       // Copy Teams Mock Message
       copyTeamsMessageBtn.addEventListener('click', () => {
@@ -157,6 +179,51 @@
         document.body.removeChild(textArea);
       });
 
+      // --- Filter Functions ---
+      function applyFilters() {
+        const selectedSandbox = sandboxFilter.value;
+        const selectedType = typeFilter.value;
+        let visibleCount = 0;
+
+        Array.from(logContainer.children).forEach(logElement => {
+          const logSandbox = logElement.dataset.sandbox;
+          const logIsError = logElement.dataset.isError === 'true';
+
+          const sandboxMatch = selectedSandbox === 'all' || logSandbox === selectedSandbox;
+          const typeMatch = selectedType === 'all' || (selectedType === 'errors' && logIsError);
+
+          if (sandboxMatch && typeMatch) {
+            logElement.style.display = 'block';
+            visibleCount++;
+          } else {
+            logElement.style.display = 'none';
+          }
+        });
+
+        // Update log count display
+        logCountEl.textContent = `(${visibleCount === MAX_LOGS ? 'Last ' : ''}${visibleCount})`;
+      }
+
+      function updateSandboxDropdown() {
+        const currentSelection = sandboxFilter.value;
+        const sortedSandboxes = Array.from(distinctSandboxes).sort();
+        
+        // Clear existing options except "All Sandboxes"
+        sandboxFilter.innerHTML = '<option value="all">All Sandboxes</option>';
+        
+        // Add sandbox options
+        sortedSandboxes.forEach(sandbox => {
+          const option = document.createElement('option');
+          option.value = sandbox;
+          option.textContent = sandbox;
+          sandboxFilter.appendChild(option);
+        });
+        
+        // Restore selection if it still exists
+        if (distinctSandboxes.has(currentSelection)) {
+          sandboxFilter.value = currentSelection;
+        }
+      }
 
       // --- Chart.js Initialization ---
       const ctx = chartCanvas.getContext('2d');
@@ -336,8 +403,8 @@
 
         const alertName = getNestedProperty(actualEventPayload, 'alertName') || 'N/A';
         const sandboxName = getNestedProperty(actualEventPayload, 'sandboxName') || 
-                    getNestedProperty(errorEvent.event, 'event.sandboxName') || 
-                    'N/A';
+                           getNestedProperty(errorEvent.event, 'event.sandboxName') || 
+                           'N/A';
         const extractedMessages = extractErrorMessages(actualEventPayload);
 
         let errorMessagesHtml = '';
@@ -422,9 +489,18 @@
           const eventIdForDisplay = getNestedProperty(actualEventPayload, 'event_id') || getNestedProperty(actualEventPayload, 'id') || 'N/A';
           // Get sandboxName for display
           const sandboxNameForDisplay = getNestedProperty(actualEventPayload, 'sandboxName') || 
-                               getNestedProperty(e.event, 'event.sandboxName') || 
-                               'N/A';
+                                       getNestedProperty(e.event, 'event.sandboxName') || 
+                                       'N/A';
 
+          // Add sandbox to the distinct set for filtering
+          if (sandboxNameForDisplay !== 'N/A') {
+            distinctSandboxes.add(sandboxNameForDisplay);
+          }
+
+          // Add data attributes for filtering
+          logEntry.dataset.sandbox = sandboxNameForDisplay;
+          logEntry.dataset.isError = isError.toString();
+          logEntry.dataset.timestamp = e.timestamp;
 
           logEntry.innerHTML = `
             <div class="log-header flex items-center space-x-2 cursor-pointer py-1">
@@ -567,7 +643,6 @@
           
           newLogs.forEach(logData => {
             const logElement = createLogElement(logData);
-            logElement.dataset.timestamp = logData.timestamp;
             logContainer.prepend(logElement);
           });
 
@@ -590,10 +665,11 @@
               logContainer.removeChild(removedChild);
           }
           
-          // Update log count display: "Event Logs (X/Last)" if at MAX_LOGS
-          const currentLogCount = logContainer.children.length;
-          logCountEl.textContent = `(${currentLogCount === MAX_LOGS ? 'Last ' : ''}${currentLogCount})`;
-
+          // Update sandbox dropdown if new sandboxes were added
+          updateSandboxDropdown();
+          
+          // Apply current filters to show the correct logs
+          applyFilters();
 
           chart.data.datasets[0].data = perHourEvents;
           chart.data.datasets[1].data = perHourErrors;
