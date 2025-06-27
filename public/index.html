@@ -12,12 +12,17 @@
       <h1 class="text-3xl font-bold">AEP Health Monitoring <span class="text-sm font-normal text-gray-400">– Last 24 Hours</span></h1>
       <div class="flex items-center space-x-2">
         <span id="statusBadge" class="bg-red-600 text-xs px-2 py-1 rounded">Disconnected</span>
-        <button id="gearBtn" class="text-white text-xl">⚙️</button>
+        <button id="gearBtn" class="text-white text-xl focus:outline-none">⚙️</button>
       </div>
     </div>
 
     <div id="modal" class="hidden bg-gray-800 border border-gray-700 p-4 rounded mb-4">
-      <p>Webhook URL: <code id="webhookUrl" class="text-blue-400"></code></p>
+      <p class="mb-2">Webhook URL:</p>
+      <div class="flex items-center space-x-2">
+        <code id="webhookUrl" class="text-blue-400 break-all"></code>
+        <button id="copyBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded">Copy</button>
+        <span id="copyStatus" class="text-green-400 text-xs hidden">Copied!</span>
+      </div>
     </div>
 
     <div class="bg-gray-800 p-4 rounded shadow mb-6">
@@ -35,12 +40,21 @@
     const gearBtn = document.getElementById('gearBtn');
     const webhookUrl = document.getElementById('webhookUrl');
     const statusBadge = document.getElementById('statusBadge');
-    const now = () => Date.now();
+    const copyBtn = document.getElementById('copyBtn');
+    const copyStatus = document.getElementById('copyStatus');
 
+    const now = () => Date.now();
     webhookUrl.textContent = window.location.origin + "/webhook";
 
     gearBtn.onclick = () => {
       modal.classList.toggle('hidden');
+      copyStatus.classList.add('hidden');
+    };
+
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(webhookUrl.textContent);
+      copyStatus.classList.remove('hidden');
+      setTimeout(() => copyStatus.classList.add('hidden'), 2000);
     };
 
     const ctx = document.getElementById('barChart').getContext('2d');
@@ -70,48 +84,54 @@
     });
 
     async function fetchEvents() {
-      const res = await fetch('/api/events');
-      const data = await res.json();
+      try {
+        const res = await fetch('/api/events');
+        const data = await res.json();
 
-      const perHourEvents = Array(24).fill(0);
-      const perHourErrors = Array(24).fill(0);
-      const logs = [];
-      let recentActivity = false;
+        const perHourEvents = Array(24).fill(0);
+        const perHourErrors = Array(24).fill(0);
+        const logs = [];
+        let recentActivity = false;
+        const nowTime = now();
 
-      const nowTime = now();
+        data.forEach(e => {
+          const dt = new Date(e.timestamp);
+          const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
+          if (hourDiff < 24) {
+            const index = 23 - hourDiff;
+            if (e.isError) {
+              perHourErrors[index]++;
+            } else {
+              perHourEvents[index]++;
+            }
 
-      data.forEach(e => {
-        const dt = new Date(e.timestamp);
-        const hourDiff = Math.floor((nowTime - e.timestamp) / 3600000);
-        if (hourDiff < 24) {
-          const index = 23 - hourDiff;
-          if (e.isError) {
-            perHourErrors[index]++;
-          } else {
-            perHourEvents[index]++;
-          }
-
-          logs.push(\`
-            <div class="p-2 border border-gray-700 rounded bg-gray-900">
-              <div class="flex justify-between items-center text-sm">
-                <span class="text-gray-400">\${dt.toLocaleString()}</span>
-                <span class="px-2 py-0.5 text-xs rounded \${e.isError ? 'bg-red-600' : 'bg-green-600'}">\${e.isError ? 'Error' : 'Event'}</span>
+            logs.push(\`
+              <div class="p-2 border border-gray-700 rounded bg-gray-900">
+                <div class="flex justify-between items-center text-sm">
+                  <span class="text-gray-400">\${dt.toLocaleString()}</span>
+                  <span class="px-2 py-0.5 text-xs rounded \${e.isError ? 'bg-red-600' : 'bg-green-600'}">\${e.isError ? 'Error' : 'Event'}</span>
+                </div>
+                <pre class="text-xs whitespace-pre-wrap mt-1 text-gray-200">\${JSON.stringify(e.event, null, 2)}</pre>
               </div>
-              <pre class="text-xs whitespace-pre-wrap mt-1 text-gray-200">\${JSON.stringify(e.event, null, 2)}</pre>
-            </div>
-          \`);
+            \`);
 
-          if (nowTime - e.timestamp < 2 * 60 * 1000) recentActivity = true;
-        }
-      });
+            if (nowTime - e.timestamp < 2 * 60 * 1000) recentActivity = true;
+          }
+        });
 
-      chart.data.datasets[0].data = perHourEvents;
-      chart.data.datasets[1].data = perHourErrors;
-      chart.update();
+        chart.data.datasets[0].data = perHourEvents;
+        chart.data.datasets[1].data = perHourErrors;
+        chart.update();
 
-      document.getElementById('log').innerHTML = logs.reverse().join('');
-      statusBadge.textContent = recentActivity ? 'Live' : 'Disconnected';
-      statusBadge.className = recentActivity ? 'bg-green-600 text-xs px-2 py-1 rounded' : 'bg-red-600 text-xs px-2 py-1 rounded';
+        document.getElementById('log').innerHTML = logs.reverse().join('');
+        statusBadge.textContent = recentActivity ? 'Live' : 'Disconnected';
+        statusBadge.className = recentActivity
+          ? 'bg-green-600 text-xs px-2 py-1 rounded'
+          : 'bg-red-600 text-xs px-2 py-1 rounded';
+      } catch (err) {
+        statusBadge.textContent = 'Disconnected';
+        statusBadge.className = 'bg-red-600 text-xs px-2 py-1 rounded';
+      }
     }
 
     setInterval(fetchEvents, 5000);
