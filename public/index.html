@@ -76,8 +76,8 @@
       const logContainer = document.getElementById('logContainer');
       const chartCanvas = document.getElementById('barChart');
       const logCountEl = document.getElementById('logCount');
-      const eventLogsHeader = document.getElementById('eventLogsHeader'); 
-      const logsToggleArrow = document.getElementById('logsToggleArrow'); 
+      const eventLogsHeader = document.getElementById('eventLogsHeader'); // New element
+      const logsToggleArrow = document.getElementById('logsToggleArrow'); // New element
       
       const displayedEventIds = new Set();
       const MAX_LOGS = 200; // Limit the number of log entries
@@ -214,8 +214,11 @@
                           messages.add(item.message);
                       }
                   });
-              } else if (typeof items === 'string' && items && path === 'message') { // Ensure items is not empty string
-                  messages.add(items);
+              } else if (typeof items === 'string' && items) { // Ensure items is not empty string, and check against its original path 'message'
+                  // We only add to messages if it's the specific 'message' path and a non-empty string.
+                  if (path === 'message') {
+                      messages.add(items);
+                  }
               }
           });
 
@@ -309,7 +312,7 @@
 
           let errorMessagesHtml = '';
           if (isError) {
-              // Pass e.event.event to extractor
+              // Pass e.event.event to extractor for message extraction
               const messages = extractErrorMessages(e.event.event); 
               if (messages.length > 0) {
                   errorMessagesHtml = messages.map(msg => `<p class="text-red-300 text-sm mt-1">${msg}</p>`).join('');
