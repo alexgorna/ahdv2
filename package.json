@@ -1,5 +1,5 @@
 {
-  "name": "aep-health-monitoring",
+  "name": "aep-health-monitoring-pro",
   "version": "1.0.0",
   "type": "module",
   "main": "server/index.js",
